@@ -20,6 +20,16 @@ export function SocialButtons({ onUnavailable }: { onUnavailable: () => void }) 
   );
 }
 
+/** Monochrome architectural panel used beside both auth forms. */
+export function AuthSide({ text }: { text: string }) {
+  return (
+    <aside className="side" aria-hidden>
+      <div className="bands" />
+      <div className="vt">{text}</div>
+    </aside>
+  );
+}
+
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -68,14 +78,7 @@ export function LoginPage() {
         </div>
         <div />
       </div>
-      <aside className="side dark">
-        <div className="wordmark"><span className="mark">{APP_NAME[0]}</span>{APP_NAME}</div>
-        <div>
-          <h2>Your workspace kept scanning while you were away.</h2>
-          <p>Sign in to see what's new, what's trending and what needs a response today.</p>
-        </div>
-        <p className="mini faint" style={{ fontSize: 12.5 }}>Hourly scans · AI sentiment · Instant alerts</p>
-      </aside>
+      <AuthSide text="Stay ahead of the conversation." />
       {toast.node}
     </div>
   );

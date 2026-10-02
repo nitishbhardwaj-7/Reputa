@@ -47,7 +47,7 @@ export function ReportsPage() {
 
   const chart = useMemo(() => series.map((r) => ({ label: new Date(r.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }), Positive: r.POSITIVE, Neutral: r.NEUTRAL, Negative: r.NEGATIVE })), [series]);
   const spark = (k: keyof SentimentOverTimeRow) => series.slice(-20).map((r) => Number(r[k]) || 0);
-  const slices: DonutSlice[] = ov ? [{ label: "Positive", value: ov.positive, color: "#34b37d" }, { label: "Neutral", value: ov.neutral, color: "#8a8f98" }, { label: "Negative", value: ov.negative, color: "#e46464" }] : [];
+  const slices: DonutSlice[] = ov ? [{ label: "Positive", value: ov.positive, color: "#15966a" }, { label: "Neutral", value: ov.neutral, color: "#8a8f98" }, { label: "Negative", value: ov.negative, color: "#e5484d" }] : [];
   const srcMax = Math.max(1, ...bySource.map((s) => s.ov.totalMentions));
 
   const tabs: { id: Tab; label: string }[] = [{ id: "overview", label: "Overview" }, { id: "sources", label: "Sources" }, { id: "sentiment", label: "Sentiment" }, { id: "topics", label: "Topics" }, { id: "top", label: "Top mentions" }];
@@ -76,10 +76,10 @@ export function ReportsPage() {
 
       {(tab === "overview" || tab === "sentiment") && ov && (
         <div className="metrics">
-          <Stat label="Total mentions" value={ov.totalMentions} color="#9a9fa6" k="POSITIVE" />
-          <Stat label="Positive" value={ov.positive} pct={ov.positivePct} color="#34b37d" k="POSITIVE" />
+          <Stat label="Total mentions" value={ov.totalMentions} color="#9a9ea4" k="POSITIVE" />
+          <Stat label="Positive" value={ov.positive} pct={ov.positivePct} color="#15966a" k="POSITIVE" />
           <Stat label="Neutral" value={ov.neutral} pct={ov.neutralPct} color="#8a8f98" k="NEUTRAL" />
-          <Stat label="Negative" value={ov.negative} pct={ov.negativePct} color="#e46464" k="NEGATIVE" />
+          <Stat label="Negative" value={ov.negative} pct={ov.negativePct} color="#e5484d" k="NEGATIVE" />
         </div>
       )}
 
@@ -114,10 +114,10 @@ export function ReportsPage() {
       {tab === "sentiment" && (
         <div className="grid-eq">
           <div className="card"><div className="card-head"><h3>Negative trends</h3></div><div className="card-body" style={{ height: 220 }}>
-            <ResponsiveContainer width="100%" height="100%"><AreaChart data={chart} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}><CartesianGrid stroke="#292c30" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tick={{ fill: "#6b7078", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={24} /><YAxis tick={{ fill: "#6b7078", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip contentStyle={{ background: "#1c1f23", border: "1px solid #33373c", borderRadius: 6, fontSize: 12 }} /><Area type="monotone" dataKey="Negative" stroke="#e46464" fill="#e46464" fillOpacity={0.12} strokeWidth={1.6} dot={false} /></AreaChart></ResponsiveContainer>
+            <ResponsiveContainer width="100%" height="100%"><AreaChart data={chart} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}><CartesianGrid stroke="rgba(15,18,20,0.08)" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tick={{ fill: "#70747a", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={24} /><YAxis tick={{ fill: "#70747a", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip contentStyle={{ background: "#fff", border: "1px solid rgba(15,18,20,0.14)", boxShadow: "0 4px 16px rgba(11,13,15,0.08)", borderRadius: 6, fontSize: 12 }} /><Area type="monotone" dataKey="Negative" stroke="#e5484d" fill="#e5484d" fillOpacity={0.12} strokeWidth={1.6} dot={false} /></AreaChart></ResponsiveContainer>
           </div></div>
           <div className="card"><div className="card-head"><h3>Positive trends</h3></div><div className="card-body" style={{ height: 220 }}>
-            <ResponsiveContainer width="100%" height="100%"><AreaChart data={chart} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}><CartesianGrid stroke="#292c30" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tick={{ fill: "#6b7078", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={24} /><YAxis tick={{ fill: "#6b7078", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip contentStyle={{ background: "#1c1f23", border: "1px solid #33373c", borderRadius: 6, fontSize: 12 }} /><Area type="monotone" dataKey="Positive" stroke="#34b37d" fill="#34b37d" fillOpacity={0.12} strokeWidth={1.6} dot={false} /></AreaChart></ResponsiveContainer>
+            <ResponsiveContainer width="100%" height="100%"><AreaChart data={chart} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}><CartesianGrid stroke="rgba(15,18,20,0.08)" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tick={{ fill: "#70747a", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={24} /><YAxis tick={{ fill: "#70747a", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} /><Tooltip contentStyle={{ background: "#fff", border: "1px solid rgba(15,18,20,0.14)", boxShadow: "0 4px 16px rgba(11,13,15,0.08)", borderRadius: 6, fontSize: 12 }} /><Area type="monotone" dataKey="Positive" stroke="#15966a" fill="#15966a" fillOpacity={0.12} strokeWidth={1.6} dot={false} /></AreaChart></ResponsiveContainer>
           </div></div>
         </div>
       )}

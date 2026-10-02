@@ -28,7 +28,7 @@ function Metric({ label, value, change, good = "up", series, color, sub }: { lab
           <div className="t">{sub}</div>
         )}
       </div>
-      {series && <Sparkline values={series} color={color ?? "#9a9fa6"} />}
+      {series && <Sparkline values={series} color={color ?? "#9a9ea4"} />}
     </div>
   );
 }
@@ -107,10 +107,10 @@ export function OverviewPage() {
       {error && <div className="banner err">{error}</div>}
 
       <div className="metrics">
-        <Metric label="Total mentions" value={overview?.totalMentions ?? 0} change={overview?.trend?.change.total} series={spark("total")} color="#9a9fa6" />
-        <Metric label="Positive" value={overview?.positive ?? 0} change={overview?.trend?.change.positive} series={spark("Positive")} color="#34b37d" />
-        <Metric label="Negative" value={overview?.negative ?? 0} change={overview?.trend?.change.negative} good="down" series={spark("Negative")} color="#e46464" />
-        <Metric label="Alerts sent" value={overview?.alertsSent24h ?? 0} sub="Last 24 hours" series={spark("Negative").map((v) => Math.min(v, 9))} color="#9a9fa6" />
+        <Metric label="Total mentions" value={overview?.totalMentions ?? 0} change={overview?.trend?.change.total} series={spark("total")} color="#9a9ea4" />
+        <Metric label="Positive" value={overview?.positive ?? 0} change={overview?.trend?.change.positive} series={spark("Positive")} color="#15966a" />
+        <Metric label="Negative" value={overview?.negative ?? 0} change={overview?.trend?.change.negative} good="down" series={spark("Negative")} color="#e5484d" />
+        <Metric label="Alerts sent" value={overview?.alertsSent24h ?? 0} sub="Last 24 hours" series={spark("Negative").map((v) => Math.min(v, 9))} color="#9a9ea4" />
       </div>
 
       <div className="grid-2">
@@ -118,7 +118,7 @@ export function OverviewPage() {
           <div className="card-head">
             <h3>Mentions over time</h3>
             <div className="row" style={{ gap: 14 }}>
-              <div className="legend"><span><i className="dot" style={{ color: "#34b37d" }} />Positive</span><span><i className="dot" style={{ color: "#8a8f98" }} />Neutral</span><span><i className="dot" style={{ color: "#e46464" }} />Negative</span></div>
+              <div className="legend"><span><i className="dot" style={{ color: "#15966a" }} />Positive</span><span><i className="dot" style={{ color: "#8a8f98" }} />Neutral</span><span><i className="dot" style={{ color: "#e5484d" }} />Negative</span></div>
               <select value={range} onChange={(e) => setRange(Number(e.target.value) as 7 | 30 | 90)} style={{ height: 28, fontSize: 12 }}>
                 <option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option>
               </select>
@@ -128,17 +128,17 @@ export function OverviewPage() {
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                 <defs>
-                  {[["p", "#34b37d"], ["n", "#8a8f98"], ["g", "#e46464"]].map(([id, c]) => (
+                  {[["p", "#15966a"], ["n", "#8a8f98"], ["g", "#e5484d"]].map(([id, c]) => (
                     <linearGradient key={id} id={`g-${id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={c} stopOpacity={0.22} /><stop offset="100%" stopColor={c} stopOpacity={0} /></linearGradient>
                   ))}
                 </defs>
-                <CartesianGrid stroke="#292c30" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: "#6b7078", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={24} />
-                <YAxis tick={{ fill: "#6b7078", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <Tooltip contentStyle={{ background: "#1c1f23", border: "1px solid #33373c", borderRadius: 6, fontSize: 12 }} labelStyle={{ color: "#9a9fa6" }} />
-                <Area type="monotone" dataKey="Positive" stroke="#34b37d" strokeWidth={1.6} fill="url(#g-p)" dot={false} activeDot={{ r: 3 }} />
+                <CartesianGrid stroke="rgba(15,18,20,0.08)" strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: "#70747a", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={24} />
+                <YAxis tick={{ fill: "#70747a", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip contentStyle={{ background: "#fff", border: "1px solid rgba(15,18,20,0.14)", boxShadow: "0 4px 16px rgba(11,13,15,0.08)", borderRadius: 6, fontSize: 12 }} labelStyle={{ color: "#9a9ea4" }} />
+                <Area type="monotone" dataKey="Positive" stroke="#15966a" strokeWidth={1.6} fill="url(#g-p)" dot={false} activeDot={{ r: 3 }} />
                 <Area type="monotone" dataKey="Neutral" stroke="#8a8f98" strokeWidth={1.4} fill="url(#g-n)" dot={false} activeDot={{ r: 3 }} />
-                <Area type="monotone" dataKey="Negative" stroke="#e46464" strokeWidth={1.6} fill="url(#g-g)" dot={false} activeDot={{ r: 3 }} />
+                <Area type="monotone" dataKey="Negative" stroke="#e5484d" strokeWidth={1.6} fill="url(#g-g)" dot={false} activeDot={{ r: 3 }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

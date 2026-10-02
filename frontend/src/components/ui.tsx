@@ -78,7 +78,7 @@ export function useCountUp(target: number, duration = 700): number {
 }
 
 /* ---------------------------------------------------------------- sparkline */
-export function Sparkline({ values, color = "#9a9fa6", width = 92, height = 36 }: { values: number[]; color?: string; width?: number; height?: number }) {
+export function Sparkline({ values, color = "#9a9ea4", width = 92, height = 36 }: { values: number[]; color?: string; width?: number; height?: number }) {
   if (!values.length) return <svg width={width} height={height} />;
   const max = Math.max(...values, 1);
   const min = Math.min(...values, 0);
@@ -107,7 +107,7 @@ export function Donut({ slices, total, label, size = 150 }: { slices: DonutSlice
   let offset = 0;
   return (
     <svg width={size} height={size} viewBox="0 0 100 100">
-      <circle cx="50" cy="50" r={r} fill="none" stroke="#212428" strokeWidth="11" />
+      <circle cx="50" cy="50" r={r} fill="none" stroke="#ecedef" strokeWidth="11" />
       {slices.map((s) => {
         const len = (s.value / sum) * c;
         const el = (
@@ -121,8 +121,8 @@ export function Donut({ slices, total, label, size = 150 }: { slices: DonutSlice
         offset += len;
         return el;
       })}
-      <text x="50" y="48" textAnchor="middle" fill="#ececed" fontSize="15" fontWeight="600" fontFamily="inherit">{(total ?? sum).toLocaleString()}</text>
-      {label && <text x="50" y="61" textAnchor="middle" fill="#9a9fa6" fontSize="7.5" fontFamily="inherit">{label}</text>}
+      <text x="50" y="48" textAnchor="middle" fill="#111315" fontSize="15" fontWeight="600" fontFamily="inherit">{(total ?? sum).toLocaleString()}</text>
+      {label && <text x="50" y="61" textAnchor="middle" fill="#70747a" fontSize="7.5" fontFamily="inherit">{label}</text>}
     </svg>
   );
 }

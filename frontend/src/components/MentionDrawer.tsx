@@ -111,7 +111,7 @@ export function MentionDrawer({ item, onClose, onChange }: Props) {
 
         <div className="d-foot">
           <button type="button" className={`btn ${resolvedAt ? "secondary" : "primary"}`} onClick={toggleResolved} disabled={busy} style={{ flex: 1 }}>
-            {busy ? <span className="spinner" /> : resolvedAt ? "Reopen" : "Mark as resolved"}
+            {busy ? <span className="spinner" /> : resolvedAt ? "Reopen" : "Mark resolved"}
           </button>
         </div>
       </aside>

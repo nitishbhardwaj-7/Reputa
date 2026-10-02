@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { FeedItem, ItemsResponse } from "../api/types";
 import { SOURCES, sourceOf } from "../brand";
-import { Icons, SentimentBadge, SourceIcon, fmtDate } from "../components/ui";
+import { Icons, SentimentBadge, SourceIcon, fmtDate, timeAgo } from "../components/ui";
 import { MentionDrawer } from "../components/MentionDrawer";
 
 const PAGE = 25;
@@ -78,7 +78,7 @@ export function MentionsPage() {
           <thead>
             <tr>
               <th style={{ width: 36 }}><input type="checkbox" checked={allChecked} onChange={() => setChecked(allChecked ? new Set() : new Set(rows.map((r) => r.id)))} /></th>
-              <th>Source</th><th>Author / Community</th><th>Mention</th><th>Sentiment</th><th>Confidence</th><th>Date</th><th>Alert</th>
+              <th>Source</th><th>Author / Community</th><th>Mention</th><th>Sentiment</th><th>Confidence</th><th>Detected</th><th>Alert</th>
             </tr>
           </thead>
           <tbody>
@@ -92,7 +92,7 @@ export function MentionsPage() {
                 <td className="mention"><span className="q">"{it.text || "—"}"</span></td>
                 <td><SentimentBadge sentiment={it.sentiment} /></td>
                 <td className="num muted">{it.confidence != null ? it.confidence.toFixed(2) : "—"}</td>
-                <td className="num muted" style={{ whiteSpace: "nowrap" }}>{fmtDate(it.publishedAt)}</td>
+                <td className="num muted" style={{ whiteSpace: "nowrap" }}>{timeAgo(it.analyzedAt ?? it.createdAt)}<div className="sub">{fmtDate(it.publishedAt)}</div></td>
                 <td>{it.alertSent ? <span className="badge info">Alert sent</span> : <span className="faint">—</span>}</td>
               </tr>
             ))}

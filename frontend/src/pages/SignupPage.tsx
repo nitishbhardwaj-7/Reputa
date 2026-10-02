@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { APP_NAME } from "../brand";
 import { useToast } from "../components/ui";
-import { SocialButtons } from "./LoginPage";
+import { AuthSide, SocialButtons } from "./LoginPage";
 import "./marketing.css";
 
 const FREE_MAIL = new Set(["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "yahoo.com", "icloud.com", "proton.me", "protonmail.com", "aol.com"]);
@@ -50,7 +50,7 @@ export function SignupPage() {
       <div className="pane">
         <Link to="/" className="wordmark"><span className="mark">{APP_NAME[0]}</span>{APP_NAME}</Link>
         <div className="form">
-          <h1>Create your account</h1>
+          <h1>Create your account.</h1>
           <p className="sub">Start monitoring your brand in minutes.<br />No credit card required.</p>
           <form onSubmit={onSubmit}>
             {error && <div className="err">{error}</div>}
@@ -65,14 +65,7 @@ export function SignupPage() {
         </div>
         <div />
       </div>
-      <aside className="side dark">
-        <div className="wordmark"><span className="mark">{APP_NAME[0]}</span>{APP_NAME}</div>
-        <div>
-          <h2>Two minutes from now, your first scan is running.</h2>
-          <p>Create an account, tell us the brand to protect and pick your sources. Everything after that is automatic.</p>
-        </div>
-        <p className="mini faint" style={{ fontSize: 12.5 }}>Free trial · No credit card · Cancel anytime</p>
-      </aside>
+      <AuthSide text="Turn mentions into opportunities." />
       {toast.node}
     </div>
   );
