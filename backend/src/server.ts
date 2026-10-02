@@ -95,6 +95,19 @@ app.use("/api", itemsRouter);
 
 app.use("/api", (_req, res) => res.status(404).json({ error: "Not found." }));
 
+// In the Docker image the built SPA ships alongside the API and is served from the
+// same origin (SERVE_STATIC_DIR). Hashed assets cache for a year; index.html never.
+if (process.env.SERVE_STATIC_DIR) {
+  const dir = path.resolve(process.env.SERVE_STATIC_DIR);
+  app.use(express.static(dir, { index: false, setHeaders: (res, file) => {
+    if (file.includes(`${path.sep}assets${path.sep}`)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  } }));
+  app.get(/^(?!\/api\/).*/, (_req, res) => {
+    res.setHeader("Cache-Control", "no-cache");
+    res.sendFile(path.join(dir, "index.html"));
+  });
+}
+
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (err?.message === "Not allowed by CORS") return res.status(403).json({ error: "Origin not allowed." });
   console.error("SERVER ERROR:", err);

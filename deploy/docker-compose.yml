@@ -1,0 +1,89 @@
+# Reputa on a host where Traefik already owns ports 80/443 (Dokploy-style).
+# Traefik issues the certificate and routes by labels; the app joins its network.
+#
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+#
+# deploy/.env (not committed):  APP_DOMAIN=orm.example.com  POSTGRES_PASSWORD=...
+# backend/.env (not committed): platform keys — see backend/.env.example.
+
+name: reputa
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: reputa-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: reputa
+      POSTGRES_USER: reputa
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+    volumes:
+      - reputa-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reputa -d reputa"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: reputa-app
+    container_name: reputa-api
+    restart: unless-stopped
+    env_file: ../backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: "4100"
+      COOKIE_SECURE: "true"
+      DATABASE_URL: postgresql://reputa:${POSTGRES_PASSWORD}@db:5432/reputa?schema=public
+      SERVE_STATIC_DIR: /app/frontend/dist
+      PYTHON_EXECUTABLE: /opt/pyenv/bin/python
+    # Loopback only: for deploy health checks and `curl` from the host. Traefik uses the network.
+    ports:
+      - "127.0.0.1:4100:4100"
+    depends_on:
+      db:
+        condition: service_healthy
+    # Headless Chromium needs more than the 64 MB default.
+    shm_size: 1g
+    networks:
+      - internal
+      - dokploy-network
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4100/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.services.reputa.loadbalancer.server.port=4100
+      # HTTPS
+      - traefik.http.routers.reputa.rule=Host(`${APP_DOMAIN:?set APP_DOMAIN in deploy/.env}`)
+      - traefik.http.routers.reputa.entrypoints=websecure
+      - traefik.http.routers.reputa.tls.certresolver=letsencrypt
+      - traefik.http.routers.reputa.service=reputa
+      # HTTP → HTTPS (middleware defined in Dokploy's middlewares.yml)
+      - traefik.http.routers.reputa-http.rule=Host(`${APP_DOMAIN}`)
+      - traefik.http.routers.reputa-http.entrypoints=web
+      - traefik.http.routers.reputa-http.middlewares=redirect-to-https@file
+      - traefik.http.routers.reputa-http.service=reputa
+
+volumes:
+  reputa-pgdata:
+
+networks:
+  internal: {}
+  dokploy-network:
+    external: true

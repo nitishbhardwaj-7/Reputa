@@ -72,7 +72,7 @@ jobs:
           DOMAIN=$(printf '%s' "${{ secrets.DEPLOY_DOMAIN }}" | tr -d '[:space:]')
           for attempt in 1 2 3; do
             echo "deploy attempt $attempt"
-            if ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=45 -o ServerAliveInterval=15 "${DEPLOY_USER}@${DEPLOY_HOST}" "DOMAIN='${DOMAIN}' bash /opt/reputa/deploy/deploy.sh"; then
+            if ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=45 -o ServerAliveInterval=15 "${DEPLOY_USER}@${DEPLOY_HOST}" "bash /opt/reputa/deploy/deploy.sh"; then
               echo 'deploy succeeded'; exit 0
             fi
             echo "attempt $attempt failed; retrying in 30s"; sleep 30
