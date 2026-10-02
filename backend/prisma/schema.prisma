@@ -1,0 +1,173 @@
+// Prisma schema for the ORM Dashboard.
+// Default datasource is SQLite for zero-config local setup.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Platform Keyword card registered for manual & automated hourly scraping.
+model PlatformKeyword {
+  id          String    @id @default(cuid())
+  platform    String    // "reddit" | "quora" | "teamblind" | "trustpilot"
+  keyword     String
+  searchUrl   String?
+  enabled     Boolean   @default(true)
+  lastRunAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([platform, keyword])
+}
+
+// Competitor Card registered for competitor analysis (basic scraping without AI sentiment analysis).
+model CompetitorCard {
+  id          String    @id @default(cuid())
+  platform    String    // "reddit" | "quora" | "teamblind" | "trustpilot" | "all"
+  keyword     String
+  searchUrl   String?
+  enabled     Boolean   @default(true)
+  lastRunAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([platform, keyword])
+}
+
+model Keyword {
+  id        String   @id @default(cuid())
+  term      String   @unique
+  createdAt DateTime @default(now())
+
+  scrapeRuns ScrapeRun[]
+  posts      Post[]
+  comments   Comment[]
+}
+
+model ScrapeRun {
+  id          String   @id @default(cuid())
+  keywordId   String
+  keyword     Keyword  @relation(fields: [keywordId], references: [id])
+
+  status      String   @default("RECEIVED")
+  rawResponse String
+  itemCount   Int      @default(0)
+  errorMessage String?
+
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+
+  posts    Post[]
+  comments Comment[]
+
+  @@index([keywordId])
+}
+
+model Post {
+  id            String   @id @default(cuid())
+  sourceKey     String   @unique
+
+  keywordId     String
+  keyword       Keyword  @relation(fields: [keywordId], references: [id])
+  scrapeRunId   String
+  scrapeRun     ScrapeRun @relation(fields: [scrapeRunId], references: [id])
+
+  platform      String?
+  title         String?
+  text          String?
+  url           String?
+  author        String?
+  authorUrl     String?
+  publishedAt   DateTime?
+
+  likes         Int?
+  shares        Int?
+  commentsCount Int?
+
+  rawItem       String
+
+  sentiment     String?
+  confidence    Float?
+  status        String   @default("RECEIVED")
+  processingError String?
+  analyzedAt    DateTime?
+  alertSent     Boolean  @default(false)
+  isCompetitor  Boolean  @default(false)
+
+  // Which subsystem discovered this mention: "scraper" (Reddit/Quora/... Playwright
+  // scrapers) or "google" (Google/Bing/YouTube SERP via Serper). Both land in this
+  // table so totals are counted once, in one place.
+  source        String   @default("scraper")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  comments      Comment[]
+
+  @@index([keywordId])
+  @@index([sentiment])
+  @@index([status])
+  @@index([publishedAt])
+  @@index([isCompetitor])
+  @@index([source])
+}
+
+model Comment {
+  id            String   @id @default(cuid())
+  sourceKey     String   @unique
+
+  keywordId     String
+  keyword       Keyword  @relation(fields: [keywordId], references: [id])
+  scrapeRunId   String
+  scrapeRun     ScrapeRun @relation(fields: [scrapeRunId], references: [id])
+
+  postId        String?
+  post          Post?    @relation(fields: [postId], references: [id])
+
+  // Reply threading. Top-level comments have parentCommentId = null and depth 0;
+  // a reply to a reply is depth 2, and so on.
+  parentCommentId String?
+  parentComment Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replies       Comment[] @relation("CommentReplies")
+  depth         Int      @default(0)
+
+  text          String?
+  url           String?
+  author        String?
+  authorUrl     String?
+  publishedAt   DateTime?
+
+  likes         Int?
+
+  rawItem       String
+
+  sentiment     String?
+  confidence    Float?
+  status        String   @default("RECEIVED")
+  processingError String?
+  analyzedAt    DateTime?
+  alertSent     Boolean  @default(false)
+  isCompetitor  Boolean  @default(false)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([keywordId])
+  @@index([postId])
+  @@index([parentCommentId])
+  @@index([sentiment])
+  @@index([status])
+  @@index([publishedAt])
+  @@index([isCompetitor])
+}
+
+// Persistent key-value settings stored directly in database for production deployment (Railway/Neon)
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

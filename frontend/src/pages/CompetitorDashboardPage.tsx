@@ -1,0 +1,421 @@
+import { useEffect, useState } from "react";
+import { api } from "../api/client";
+import type { CompetitorCard, CompetitorOverview, FeedItem, ItemsResponse } from "../api/types";
+import { ItemList } from "../components/ItemList";
+
+const PAGE_SIZE = 20;
+
+export function CompetitorDashboardPage() {
+  const [platform, setPlatform] = useState<string>("all");
+  const [cards, setCards] = useState<CompetitorCard[]>([]);
+  const [overview, setOverview] = useState<CompetitorOverview | null>(null);
+
+  // New competitor card form state
+  const [formPlatform, setFormPlatform] = useState<string>("reddit");
+  const [newKeyword, setNewKeyword] = useState("");
+  const [newSearchUrl, setNewSearchUrl] = useState("");
+
+  const [loadingCardId, setLoadingCardId] = useState<string | null>(null);
+  const [runningAll, setRunningAll] = useState(false);
+  const [successBanner, setSuccessBanner] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Feed items state
+  const [data, setData] = useState<ItemsResponse | null>(null);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  useEffect(() => {
+    fetchFeedData();
+  }, [platform, searchQuery, page]);
+
+  async function loadDashboard() {
+    try {
+      const [cardsRes, overviewRes] = await Promise.all([
+        api.getCompetitorCards(),
+        api.getCompetitorOverview().catch(() => null),
+      ]);
+      setCards(cardsRes.cards || []);
+      if (overviewRes) setOverview(overviewRes);
+    } catch (err) {
+      console.error("Failed to load competitor dashboard:", err);
+    }
+  }
+
+  function fetchFeedData() {
+    setFeedLoading(true);
+    api.getCompetitorItems({ platform, search: searchQuery, page, pageSize: PAGE_SIZE })
+      .then((r) => setData(r))
+      .catch((err) => console.error("Failed to load competitor feed:", err))
+      .finally(() => setFeedLoading(false));
+  }
+
+  async function handleAddCard(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newKeyword.trim()) return;
+    const targetPlatform = formPlatform;
+
+    try {
+      setError(null);
+      setSuccessBanner(null);
+      await api.createCompetitorCard({
+        platform: targetPlatform,
+        keyword: newKeyword.trim(),
+        searchUrl: newSearchUrl.trim() || undefined,
+      });
+      setNewKeyword("");
+      setNewSearchUrl("");
+      setSuccessBanner(`✓ Added competitor card for "${newKeyword.trim()}" on ${targetPlatform.toUpperCase()}`);
+      await loadDashboard();
+      fetchFeedData();
+    } catch (err: any) {
+      setError(err.message || "Failed to create competitor card.");
+    }
+  }
+
+  async function handleToggleCard(id: string) {
+    try {
+      await api.toggleCompetitorCard(id);
+      await loadDashboard();
+    } catch (err: any) {
+      setError(err.message || "Failed to toggle card.");
+    }
+  }
+
+  async function handleDeleteCard(id: string) {
+    if (!confirm("Are you sure you want to delete this competitor card?")) return;
+    try {
+      await api.deleteCompetitorCard(id);
+      await loadDashboard();
+    } catch (err: any) {
+      setError(err.message || "Failed to delete card.");
+    }
+  }
+
+  async function handleRunCard(card: CompetitorCard) {
+    try {
+      setLoadingCardId(card.id);
+      setError(null);
+      setSuccessBanner(null);
+      const res = await api.runCompetitorCardNow(card.id);
+      const newCount = (res.result?.postsCreated || 0) + (res.result?.commentsCreated || 0);
+      setSuccessBanner(`✓ Scraped competitor card "${card.keyword}": Added ${newCount} new competitor mention(s) (no AI sentiment tokens used).`);
+      await loadDashboard();
+      fetchFeedData();
+    } catch (err: any) {
+      setError(err.message || `Failed to scrape competitor "${card.keyword}".`);
+    } finally {
+      setLoadingCardId(null);
+    }
+  }
+
+  async function handleRunAllCards() {
+    try {
+      setRunningAll(true);
+      setError(null);
+      setSuccessBanner(null);
+      const res = await api.runAllCompetitorCardsNow();
+      setSuccessBanner(`⚡ ${res.message || "Competitor scrape completed!"}`);
+      await loadDashboard();
+      fetchFeedData();
+    } catch (err: any) {
+      setError(err.message || "Failed to run competitor cards.");
+    } finally {
+      setRunningAll(false);
+    }
+  }
+
+  const activeCards = cards.filter((c) => (platform === "all" ? true : c.platform === platform));
+  const items: FeedItem[] = data?.items ?? [];
+  const totalPages = data ? Math.max(1, Math.ceil(data.pagination.total / PAGE_SIZE)) : 1;
+
+  return (
+    <div style={{ maxWidth: 1180 }}>
+      {/* Page Header */}
+      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <h2>🥊 Competitor Dashboard</h2>
+          <p style={{ margin: "4px 0 0", color: "var(--text-dim)", fontSize: 13 }}>
+            Monitor competitor brand keywords &amp; mentions across Reddit, Quora, TeamBlind, Trustpilot &amp; Web. Basic scraping without AI sentiment tokens.
+          </p>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => api.exportToExcel({ scope: "competitor", platform: platform === "all" ? undefined : platform })}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              cursor: "pointer",
+            }}
+            title="Download multi-tab Excel report for competitor mentions with clickable links"
+          >
+            📊 Export Excel
+          </button>
+
+          <button
+            type="button"
+            onClick={handleRunAllCards}
+            disabled={runningAll || loadingCardId !== null}
+            style={{
+              background: "var(--accent)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              padding: "8px 16px",
+              fontWeight: 600,
+              fontSize: 13,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              cursor: "pointer",
+            }}
+          >
+            {runningAll ? "Scraping Competitors…" : "⚡ Run All Competitor Cards Now"}
+          </button>
+        </div>
+      </div>
+
+      {/* Notifications */}
+      {successBanner && (
+        <div className="banner info" style={{ marginBottom: 16 }}>
+          {successBanner}
+        </div>
+      )}
+      {error && (
+        <div className="banner warn" style={{ marginBottom: 16 }}>
+          ⚠ {error}
+        </div>
+      )}
+
+      {/* Overview Stat Cards Grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 24 }}>
+        <div className="card" style={{ padding: 18 }}>
+          <div style={{ fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>
+            Total Competitor Mentions
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: "var(--accent)" }}>
+            {overview ? overview.totalMentions : items.length}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 18 }}>
+          <div style={{ fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>
+            Active Competitor Cards
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: "#38bdf8" }}>
+            {overview ? overview.activeCardsCount : cards.filter((c) => c.enabled).length}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 18 }}>
+          <div style={{ fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>
+            Competitor Posts
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: "#a855f7" }}>
+            {overview ? overview.totalPosts : 0}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 18 }}>
+          <div style={{ fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>
+            Competitor Comments
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: "#f43f5e" }}>
+            {overview ? overview.totalComments : 0}
+          </div>
+        </div>
+      </div>
+
+      {/* Platform Filter Chips */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+        {[
+          { id: "all", label: "All Platforms" },
+          { id: "reddit", label: "Reddit" },
+          { id: "quora", label: "Quora" },
+          { id: "teamblind", label: "TeamBlind" },
+          { id: "trustpilot", label: "Trustpilot" },
+          { id: "linkedin", label: "LinkedIn" },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => {
+              setPlatform(tab.id);
+              setPage(1);
+            }}
+            className={platform === tab.id ? "primary" : "secondary"}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 20,
+              fontSize: 13,
+              fontWeight: 500,
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Add Competitor Card Form */}
+      <div className="card" style={{ marginBottom: 24, padding: 20 }}>
+        <h3 style={{ margin: "0 0 12px", fontSize: 15 }}>➕ Register Competitor Keyword Card</h3>
+        <form onSubmit={handleAddCard} style={{ display: "grid", gridTemplateColumns: "1fr 2fr 120px", gap: 12 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 12, marginBottom: 4, color: "var(--text-dim)" }}>Platform</label>
+            <select
+              value={formPlatform}
+              onChange={(e) => setFormPlatform(e.target.value)}
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 6 }}
+            >
+              <option value="reddit">Reddit</option>
+              <option value="quora">Quora</option>
+              <option value="teamblind">TeamBlind</option>
+              <option value="trustpilot">Trustpilot</option>
+              <option value="linkedin">LinkedIn</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontSize: 12, marginBottom: 4, color: "var(--text-dim)" }}>Competitor Keyword / Brand Name</label>
+            <input
+              type="text"
+              placeholder='e.g. "CompetitorName" or competitor domain'
+              value={newKeyword}
+              onChange={(e) => setNewKeyword(e.target.value)}
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 6 }}
+            />
+          </div>
+
+          <div style={{ display: "flex", alignItems: "flex-end" }}>
+            <button type="submit" className="primary" style={{ width: "100%", height: 38, padding: 0 }}>
+              Add Card
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Competitor Keyword Cards Grid */}
+      <div style={{ marginBottom: 28 }}>
+        <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>Competitor Keyword Cards ({activeCards.length})</h3>
+        {activeCards.length === 0 ? (
+          <div className="empty-state">No competitor cards configured yet for this platform. Add one above!</div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+            {activeCards.map((card) => (
+              <div
+                key={card.id}
+                className="card"
+                style={{
+                  padding: 16,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  opacity: card.enabled ? 1 : 0.6,
+                  borderLeft: `4px solid ${card.enabled ? "var(--accent)" : "var(--border)"}`,
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--accent)" }}>
+                      {card.platform}
+                    </span>
+                    <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={card.enabled}
+                        onChange={() => handleToggleCard(card.id)}
+                      />
+                      {card.enabled ? "Active" : "Paused"}
+                    </label>
+                  </div>
+
+                  <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>{card.keyword}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 12 }}>
+                    Last run: {card.lastRunAt ? new Date(card.lastRunAt).toLocaleString() : "Never"}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={loadingCardId === card.id || !card.enabled}
+                    onClick={() => handleRunCard(card)}
+                    style={{ flex: 1, padding: "6px 10px", fontSize: 12 }}
+                  >
+                    {loadingCardId === card.id ? "Scraping…" : "▶ Run Scraper"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => handleDeleteCard(card.id)}
+                    style={{ padding: "6px 10px", fontSize: 12, color: "#ff8f9c" }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Competitor Feed Section */}
+      <div style={{ marginTop: 32 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 16 }}>
+            Scraped Competitor Mentions {data && <span style={{ fontSize: 13, color: "var(--text-dim)", fontWeight: 400 }}>({data.pagination.total} total)</span>}
+          </h3>
+
+          <input
+            type="text"
+            placeholder="Search competitor posts &amp; comments…"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(1);
+            }}
+            style={{ padding: "6px 12px", borderRadius: 6, width: 260, fontSize: 13 }}
+          />
+        </div>
+
+        {feedLoading ? (
+          <div className="empty-state">Loading competitor feed…</div>
+        ) : items.length === 0 ? (
+          <div className="empty-state">No competitor mentions found yet. Run a competitor card above or click Seed!</div>
+        ) : (
+          <>
+            <ItemList items={items} onRetried={fetchFeedData} />
+
+            {data && data.pagination.total > PAGE_SIZE && (
+              <div className="pagination" style={{ marginTop: 20 }}>
+                <button className="secondary" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                  Prev
+                </button>
+                <span>
+                  Page {page} of {totalPages}
+                </span>
+                <button className="secondary" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+                  Next
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

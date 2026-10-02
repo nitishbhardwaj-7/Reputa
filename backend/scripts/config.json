@@ -1,0 +1,103 @@
+{
+  "brand": {
+    "name": "EB1A Experts",
+    "queries": [
+      "\"EB1A Experts\"",
+      "\"EB-1A Experts\"",
+      "\"eb1aexperts\"",
+      "eb1aexperts.com",
+      "\"EB1A Experts\" site:reddit.com"
+    ],
+    "own_domains": [
+      "eb1aexperts.com"
+    ]
+  },
+  "sources": [
+    {
+      "id": "google_news",
+      "engine": "google_news",
+      "enabled": true,
+      "every_minutes": 60,
+      "pages": 1,
+      "queries": [
+        "\"EB1A Experts\"",
+        "\"EB-1A Experts\""
+      ],
+      "params": { "gl": "us", "hl": "en" }
+    },
+    {
+      "id": "google_web",
+      "engine": "google",
+      "enabled": true,
+      "every_minutes": 360,
+      "pages": 2,
+      "params": { "gl": "us", "hl": "en" }
+    },
+    {
+      "id": "bing_web",
+      "engine": "bing",
+      "enabled": true,
+      "every_minutes": 720,
+      "pages": 1,
+      "queries": [
+        "\"EB1A Experts\"",
+        "\"EB-1A Experts\"",
+        "\"eb1aexperts\"",
+        "eb1aexperts.com"
+      ],
+      "params": {}
+    },
+    {
+      "id": "youtube",
+      "engine": "youtube",
+      "enabled": true,
+      "every_minutes": 1440,
+      "pages": 1,
+      "queries": [
+        "\"EB1A Experts\""
+      ],
+      "params": {}
+    }
+  ],
+  "filters": {
+    "exclude_domains": [
+      "indeed.com",
+      "glassdoor.com",
+      "linkedin.com/jobs",
+      "ziprecruiter.com",
+      "naukri.com",
+      "pinterest.com",
+      "zoominfo.com",
+      "rocketreach.co",
+      "apollo.io",
+      "signalhire.com",
+      "lusha.com",
+      "bebee.com",
+      "techmap.in",
+      "jobrapido.com",
+      "trabajo.org"
+    ],
+    "exclude_title_terms": [
+      "hiring",
+      "job opening",
+      "salary",
+      "careers at",
+      "walk-in",
+      "hr lead",
+      "vacancy",
+      "apply now"
+    ],
+    "require_brand_in_text": false
+  },
+  "notify": {
+    "mode": "digest",
+    "max_items_per_email": 40,
+    "send_when_empty": false,
+    "subject_prefix": "[EB1A Experts]"
+  },
+  "api": {
+    "delay_between_calls_seconds": 0.5,
+    "max_retries": 3,
+    "timeout_seconds": 30
+  }
+}
