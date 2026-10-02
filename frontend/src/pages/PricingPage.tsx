@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { PricingSection } from "../marketing/Pricing";
 import { Arrow } from "../marketing/Lines";
-import { gsap, reducedMotion, revealLinesAll, useSmoothScroll } from "../lib/motion";
+import { gsap, ScrollTrigger, reducedMotion, revealLinesAll, useSmoothScroll } from "../lib/motion";
 import { MarketingNav, MarketingFooter } from "./MarketingNav";
 import "./marketing.css";
 
@@ -11,15 +11,19 @@ export function PricingPage() {
   const root = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (reducedMotion() || !root.current) return;
-    const ctx = gsap.context(() => revealLinesAll(root.current!), root);
+    const ctx = gsap.context(() => {
+      gsap.from(".mk-nav", { y: -18, opacity: 0, duration: 0.9, ease: "power4.out" });
+      ScrollTrigger.create({ start: 20, onUpdate: (s) => root.current!.querySelector(".mk-nav-wrap")?.classList.toggle("scrolled", s.scroll() > 20) });
+      revealLinesAll(root.current!);
+    }, root);
     return () => ctx.revert();
   }, []);
 
   return (
-    <div className="light" ref={root}>
+    <div className="light with-nav" ref={root}>
       <MarketingNav />
       <PricingSection />
-      <section className="wrap faq">
+      <section className="wrap faq" style={{ paddingTop: 0 }}>
         <div className="faq-grid">
           {[
             ["What counts as a mention?", "Any post, comment, review, answer or search result that contains one of your keywords. Replies inside a thread count individually so you never miss a buried complaint."],

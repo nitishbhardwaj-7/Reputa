@@ -14,10 +14,10 @@ export function MarketingNav() {
       <a href="/#how">How it works</a>
       <a href="/#integrations">Integrations</a>
       <NavLink to="/pricing">Pricing</NavLink>
-      <a href={`mailto:${SUPPORT_EMAIL}`}>Resources</a>
     </>
   );
   return (
+    <div className="mk-nav-wrap">
     <nav className="mk-nav">
       <Link to="/" className="wordmark"><span className="mark">{APP_NAME[0]}</span>{APP_NAME}</Link>
       <div className="links">{links}</div>
@@ -36,6 +36,7 @@ export function MarketingNav() {
       </div>
       {open && <div className="mk-menu" onClick={() => setOpen(false)}>{links}</div>}
     </nav>
+    </div>
   );
 }
 

@@ -20,11 +20,7 @@ const LIVE = [
 const MATRIX: { id: string; label: string; n: number; glyph?: React.ReactNode }[] = [
   { id: "reddit", label: "Reddit", n: 342 }, { id: "google", label: "Google", n: 218 }, { id: "trustpilot", label: "Trustpilot", n: 196 }, { id: "linkedin", label: "LinkedIn", n: 148 },
   { id: "quora", label: "Quora", n: 121 }, { id: "youtube", label: "YouTube", n: 97 }, { id: "teamblind", label: "TeamBlind", n: 73 },
-  { id: "x", label: "X", n: 64, glyph: <span className="src-icon" style={{ width: 30, height: 30, background: "#111315", fontSize: 15 }}>𝕏</span> },
-  { id: "news", label: "News", n: 51, glyph: <span className="src-icon" style={{ width: 30, height: 30, background: "#3a3e44", fontSize: 14 }}>N</span> },
-  { id: "discord", label: "Discord", n: 38, glyph: <span className="src-icon" style={{ width: 30, height: 30, background: "#5865f2", fontSize: 14 }}>D</span> },
-  { id: "g2", label: "G2", n: 29, glyph: <span className="src-icon" style={{ width: 30, height: 30, background: "#ff492c", fontSize: 13 }}>G2</span> },
-  { id: "more", label: "And more", n: 0, glyph: <span className="src-icon" style={{ width: 30, height: 30, background: "transparent", color: "#111315", border: "1px solid rgba(15,18,20,.2)", fontSize: 16 }}>…</span> },
+  { id: "news", label: "News", n: 51, glyph: <span className="src-icon" style={{ width: 30, height: 30, background: "#111111", fontSize: 14 }}>N</span> },
 ];
 
 const LOGOS = [
@@ -65,44 +61,36 @@ export function LandingPage() {
     if (!el || reducedMotion()) return;
     const ctx = gsap.context(() => {
       /* nav border on scroll */
-      const nav = el.querySelector(".mk-nav")!;
-      ScrollTrigger.create({ start: 20, onUpdate: (s) => nav.classList.toggle("scrolled", s.scroll() > 20) });
-      /* the nav inverts while a black section sits underneath it */
-      let darkUnder = 0;
-      gsap.utils.toArray<HTMLElement>(".dark").forEach((sec) =>
-        ScrollTrigger.create({ trigger: sec, start: "top 60px", end: "bottom 60px", onToggle: (s) => { darkUnder += s.isActive ? 1 : -1; nav.classList.toggle("on-dark", darkUnder > 0); } }));
-
       /* hero entrance */
       const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
-      tl.from(".mk-nav", { y: -10, opacity: 0, duration: 0.6 })
+      tl.from(".mk-nav", { y: -18, opacity: 0, duration: 0.9, ease: "power4.out" })
         .from(".hero-lines .wave", { strokeDashoffset: 1, duration: 1.4, ease: "power2.inOut", stagger: 0.15 }, 0)
         .from(".hero .eyebrow", { clipPath: "inset(0 100% 0 0)", duration: 0.7 }, "-=0.35")
         .from(".hero .ln-in", { yPercent: 112, duration: 1, ease: "power4.out", stagger: { each: 0.09 } }, "-=0.45")
         .from(".hero .lede, .hero .actions, .hero .fine", { y: 18, opacity: 0, duration: 0.7, stagger: 0.08 }, "-=0.6")
-        .from(".hero-visual", { y: 80, scale: 0.94, opacity: 0, duration: 1.2, ease: "power4.out" }, "-=0.95")
+        .from(".hero-visual", { y: 100, scale: 0.94, opacity: 0, duration: 1.4, ease: "power4.out" }, "-=0.95")
         .add(() => drawAll(el.querySelector(".hero-visual")!), "-=1.1");
 
       /* dashboard keeps drifting as the page starts to move */
-      gsap.to(".hero-visual .frame", { y: -50, rotate: 0, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
+      gsap.to(".hero-visual .frame", { y: -40, rotate: 0, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
 
-      revealLinesAll(el);
-      countUpAll(el);
-
+      /* Pinned story first: anything created after it gets the pin spacer folded into its positions. */
       const mm = gsap.matchMedia();
       mm.add("(min-width: 900px)", () => {
         /* pinned live-mentions story */
         const cards = gsap.utils.toArray<HTMLElement>(".mon .mcard");
         const st = gsap.timeline({ scrollTrigger: { trigger: ".mon", start: "top top", end: "+=200%", pin: true, scrub: 0.6, anticipatePin: 1 } });
         cards.forEach((c, i) => {
-          st.from(c, { y: 70, opacity: 0, duration: 1 }, i);
-          if (i > 0) st.to(cards.slice(0, i), { y: "-=10", duration: 1 }, "<");
+          st.fromTo(c, { y: 90, scale: 0.94, opacity: 0, rotateX: 8, clipPath: "inset(0 0 100% 0)" },
+            { y: 0, scale: 1, opacity: 1, rotateX: 0, clipPath: "inset(0 0 0% 0)", duration: 1 }, i);
+          if (i > 0) st.to(cards.slice(0, i), { y: "-=12", scale: "-=0.015", opacity: "-=0.18", duration: 1 }, "<");
         });
         st.fromTo(".mon .rail i", { scaleY: 0 }, { scaleY: 1, duration: cards.length, ease: "none" }, 0);
         st.from(".mon .detected", { opacity: 0, y: 8, duration: 0.5 }, cards.length - 0.3);
         st.from(".mon .copy .caps li", { x: -10, opacity: 0, stagger: 0.25, duration: 0.8 }, 0.2);
 
         /* parallax data objects */
-        [[".obj-1", -70], [".obj-2", -130], [".obj-3", -30]].forEach(([sel, y]) =>
+        [[".obj-1", -24], [".obj-2", -48], [".obj-3", -12], [".obj-4", -36]].forEach(([sel, y]) =>
           gsap.to(sel as string, { y, ease: "none", scrollTrigger: { trigger: ".ins", start: "top bottom", end: "bottom top", scrub: true } }));
 
         /* alert windows stack toward the viewer */
@@ -119,19 +107,42 @@ export function LandingPage() {
         gsap.from(".al .w1", { y: 30, opacity: 0, duration: 0.7, scrollTrigger: { trigger: ".al .stage", start: "top 85%", once: true } });
       });
 
+
+      const nav = el.querySelector(".mk-nav-wrap")!;
+      ScrollTrigger.create({ start: 20, onUpdate: (s) => nav.classList.toggle("scrolled", s.scroll() > 20) });
+      /* the page itself fades to black around each dark section instead of a hard edge */
+      gsap.set(".mon, .al", { backgroundColor: "transparent" });
+      // Fade in on the dark section itself; fade out on the light section that follows it,
+      // because a pinned section's "bottom" is measured before pinning and would fire too early.
+      // The glass nav follows the same colour: it inverts once the page behind it is more dark than light.
+      const syncNav = () => {
+        const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(el.style.backgroundColor);
+        if (m) nav.classList.toggle("on-dark", (Number(m[1]) + Number(m[2]) + Number(m[3])) / 3 < 128);
+      };
+      ([[".mon", ".ins"], [".al", ".rep"]] as const).forEach(([dark, next]) => {
+        gsap.fromTo(el, { backgroundColor: "#f7f6f2" }, { backgroundColor: "#0b0c0d", ease: "none", immediateRender: false, onUpdate: syncNav,
+          scrollTrigger: { trigger: dark, start: "top 85%", end: "top 30%", scrub: true } });
+        gsap.fromTo(el, { backgroundColor: "#0b0c0d" }, { backgroundColor: "#f7f6f2", ease: "none", immediateRender: false, onUpdate: syncNav,
+          scrollTrigger: { trigger: next, start: "top 70%", end: "top 20%", scrub: true } });
+      });
+
+      revealLinesAll(el);
+      countUpAll(el);
+
       /* source cells, testimonials, pricing columns stagger in */
       gsap.from(".cell", { opacity: 0, y: 10, stagger: { each: 0.04, grid: "auto", from: "start" }, duration: 0.6, scrollTrigger: { trigger: ".matrix", start: "top 80%", once: true } });
       gsap.from(".tm .quote", { opacity: 0, y: 14, stagger: 0.1, duration: 0.7, scrollTrigger: { trigger: ".tm .grid3", start: "top 85%", once: true } });
       gsap.from(".plan", { opacity: 0, y: 14, stagger: 0.1, duration: 0.7, scrollTrigger: { trigger: ".pr-grid", start: "top 85%", once: true } });
       gsap.from(".obj", { opacity: 0, y: 24, stagger: 0.12, duration: 0.8, scrollTrigger: { trigger: ".ins .objs", start: "top 80%", once: true } });
       drawAll(el.querySelector(".ins")!);
+      gsap.from(".obj .grow-x", { scaleX: 0, duration: 0.9, ease: "power3.out", stagger: 0.06, scrollTrigger: { trigger: ".obj-4", start: "top 85%", once: true } });
       drawAll(el.querySelector(".rep")!);
     }, root);
     return () => ctx.revert();
   }, []);
 
   return (
-    <div className="light" ref={root}>
+    <div className="light with-nav" ref={root}>
       <MarketingNav />
 
       {/* ------------------------------------------------ hero */}
@@ -139,7 +150,7 @@ export function LandingPage() {
         <HeroLines />
         <div className="copy">
           <div className="eyebrow">Online reputation management</div>
-          <Lines as="h1" className="h-xl" lines={["Know what", "the internet is", "saying about", <span className="blue">your brand.</span>]} />
+          <Lines as="h1" className="h-xl" lines={["Know what the internet", "is saying about", <span className="dim">your brand.</span>]} />
           <p className="lede">
             Monitor every meaningful mention of your brand across Reddit, Quora, Trustpilot, LinkedIn, Google, YouTube and more —
             with hourly updates, AI sentiment analysis and instant alerts for negative conversations.
@@ -224,8 +235,16 @@ export function LandingPage() {
             <div className="obj obj-3">
               <div className="l">Sentiment distribution</div>
               <div className="donut">
-                <Donut slices={[{ label: "Positive", value: 2416, color: "#15966a" }, { label: "Neutral", value: 981, color: "#8a8f98" }, { label: "Negative", value: 445, color: "#e5484d" }]} total={3842} label="Mentions" size={110} />
+                <Donut slices={[{ label: "Positive", value: 2416, color: "#15966a" }, { label: "Neutral", value: 981, color: "#8a8f98" }, { label: "Negative", value: 445, color: "#e5484d" }]} total={3842} label="Mentions" size={96} />
                 <ul><li><i style={{ background: "#15966a" }} />Positive<em>62.9%</em></li><li><i style={{ background: "#8a8f98" }} />Neutral<em>25.5%</em></li><li><i style={{ background: "#e5484d" }} />Negative<em>11.6%</em></li></ul>
+              </div>
+            </div>
+            <div className="obj obj-4">
+              <div className="l">Top topics</div>
+              <div className="topics">
+                {[["Customer support", 28], ["Pricing", 16], ["Integrations", 14], ["Product feedback", 12], ["Refunds", 8]].map(([t, n]) => (
+                  <div className="topic" key={t as string}><span>{t}</span><span className="bar"><i className="grow-x" style={{ width: `${(Number(n) / 28) * 100}%` }} /></span><em>{n}%</em></div>
+                ))}
               </div>
             </div>
           </div>
@@ -246,7 +265,7 @@ export function LandingPage() {
               <div className="cell" key={m.id}>
                 <span className="idx">{String(i + 1).padStart(2, "0")}</span>
                 <span className="glyph">{m.glyph ?? <SourceIcon platform={m.id} size={30} />}</span>
-                <div className="meta"><b>{m.label}</b><small>{m.n ? `${m.n} mentions this week` : "New sources every month"}</small></div>
+                <div className="meta"><b>{m.label}</b><small>{m.n} mentions this week</small></div>
               </div>
             ))}
           </div>

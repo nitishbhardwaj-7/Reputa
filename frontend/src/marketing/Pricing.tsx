@@ -13,7 +13,7 @@ const PLANS = [
 export function PricingSection({ id = "pricing" }: { id?: string }) {
   const [yearly, setYearly] = useState(false);
   return (
-    <section id={id} className="dark pr">
+    <section id={id} className="pr">
       <div className="wrap">
         <div className="pr-head">
           <div>

@@ -5,6 +5,7 @@ import Lenis from "lenis";
 
 gsap.registerPlugin(ScrollTrigger);
 export { gsap, ScrollTrigger };
+if (import.meta.env.DEV) (window as any).__ST = ScrollTrigger;
 
 export const reducedMotion = () =>
   typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -45,7 +46,9 @@ export function countUpAll(scope: Element) {
 /** Masked line reveals for every `[data-lines]` block (hero handles its own). */
 export function revealLinesAll(scope: Element) {
   scope.querySelectorAll<HTMLElement>("[data-lines]").forEach((el) => {
-    gsap.from(el.querySelectorAll(".ln-in"), {
+    const lines = el.querySelectorAll(".ln-in");
+    if (!lines.length) return;
+    gsap.from(lines, {
       yPercent: 110,
       duration: 0.95,
       ease: "power4.out",
@@ -58,14 +61,16 @@ export function revealLinesAll(scope: Element) {
 /** Chart strokes with pathLength="1" draw themselves when they enter the viewport. */
 export function drawAll(scope: Element) {
   scope.querySelectorAll<SVGElement>("[data-draw]").forEach((svg) => {
-    gsap.from(svg.querySelectorAll(".draw"), {
+    const strokes = svg.querySelectorAll(".draw");
+    const bars = svg.querySelectorAll(".grow");
+    if (strokes.length) gsap.from(strokes, {
       strokeDashoffset: 1,
       duration: 1.3,
       ease: "power2.inOut",
       stagger: 0.12,
       scrollTrigger: { trigger: svg, start: "top 88%", once: true },
     });
-    gsap.from(svg.querySelectorAll(".grow"), {
+    if (bars.length) gsap.from(bars, {
       scaleY: 0,
       transformOrigin: "bottom",
       duration: 0.9,
