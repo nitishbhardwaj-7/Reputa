@@ -34,9 +34,11 @@ try {
   const schema = path.join(backendDir, "prisma", "schema.prisma");
   console.log("Syncing database schema...");
   execFileSync(process.execPath, [prismaCli, "db", "push", "--skip-generate", "--schema", schema], {
-    stdio: "inherit",
+    // stdin closed: if Prisma ever wants to ask a question it must fail, not hang the boot.
+    stdio: ["ignore", "inherit", "inherit"],
     cwd: backendDir,
     timeout: 120_000,
+    env: { ...process.env, PRISMA_HIDE_UPDATE_MESSAGE: "1", CI: "1" },
   });
 } catch (err: any) {
   console.warn("Schema sync notice:", err?.message || err);

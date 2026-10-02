@@ -218,7 +218,8 @@ competitorsRouter.post("/cards", async (req, res, next) => {
 competitorsRouter.delete("/cards/:id", async (req, res, next) => {
   try {
     const orgId = orgOf(req);
-    await prisma.competitorCard.deleteMany({ where: { id: req.params.id, organizationId: orgId } });
+    const result = await prisma.competitorCard.deleteMany({ where: { id: req.params.id, organizationId: orgId } });
+    if (result.count === 0) return res.status(404).json({ error: "Competitor not found." });
     await syncCompetitorFlags(orgId, true);
     res.json({ ok: true, message: "Competitor removed." });
   } catch (err) {

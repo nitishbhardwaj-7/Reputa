@@ -88,7 +88,7 @@ export function ManualScraperPage() {
     setError(null);
     setSuccessBanner(null);
     setResult(null);
-    setProgressStage(`Running Playwright scraper for ${card.platform.toUpperCase()} keyword "${card.keyword}"...`);
+    setProgressStage(`Scanning ${card.platform} for "${card.keyword}"…`);
 
     try {
       const res = await api.runPlatformCardNow(card.id, {
@@ -202,13 +202,13 @@ export function ManualScraperPage() {
         </div>
       )}
 
-      {/* Hourly Background Cron Status Banner */}
+      {/* Hourly monitoring status */}
       <div
         className="card"
         style={{
           marginBottom: 24,
-          background: "rgba(51, 193, 122, 0.06)",
-          border: "1px solid rgba(51, 193, 122, 0.3)",
+          background: "rgba(61, 220, 151, 0.06)",
+          border: "1px solid rgba(61, 220, 151, 0.3)",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -217,18 +217,18 @@ export function ManualScraperPage() {
       >
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: "#33c17a" }}>
-              ⏰ Automated 1-Hour Background Cron Scraper: ACTIVE
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--positive)" }}>
+              Hourly monitoring is {cronStatus?.cronEnabled === false ? "paused" : "active"}
             </span>
           </div>
           <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--text-dim)" }}>
-            Automatically scrapes every active keyword card across Reddit, Quora, TeamBlind, Trustpilot, and LinkedIn every 60 minutes with live AI sentiment analysis and instant SMTP email alerts.
+            Every enabled keyword is scanned each hour. New mentions are analyzed for sentiment automatically and negative ones are emailed to your alert recipients.
           </p>
         </div>
 
         {cronStatus?.nextCronRunAt && (
           <div style={{ textAlign: "right", fontSize: 12, color: "var(--text-dim)" }}>
-            <div>Next scheduled run:</div>
+            <div>Next scan</div>
             <strong style={{ color: "var(--text)" }}>{new Date(cronStatus.nextCronRunAt).toLocaleTimeString()}</strong>
           </div>
         )}

@@ -91,7 +91,8 @@ platformKeywordsRouter.post("/bulk", async (req, res, next) => {
 // DELETE /:id
 platformKeywordsRouter.delete("/:id", async (req, res, next) => {
   try {
-    await prisma.platformKeyword.deleteMany({ where: { id: req.params.id, organizationId: orgOf(req) } });
+    const result = await prisma.platformKeyword.deleteMany({ where: { id: req.params.id, organizationId: orgOf(req) } });
+    if (result.count === 0) return res.status(404).json({ error: "Keyword not found." });
     res.json({ ok: true, message: "Keyword removed." });
   } catch (err) {
     next(err);
