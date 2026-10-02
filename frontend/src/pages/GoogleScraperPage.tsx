@@ -101,7 +101,6 @@ export function GoogleScraperPage() {
   const [notification, setNotification] = useState<{ text: string; kind?: "ok" | "err" } | null>(null);
 
   const [sessionNewIds, setSessionNewIds] = useState<Set<string>>(new Set());
-  const [ingestingId, setIngestingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const terminalRef = useRef<HTMLPreElement>(null);
@@ -250,36 +249,7 @@ export function GoogleScraperPage() {
     }
   }
 
-  async function handleIngestItem(item: GoogleMention) {
-    try {
-      setIngestingId(item.id);
-      const res = await api.ingestGoogleMentions({
-        items: [item],
-        keyword: item.query || brand,
-      });
-      showToast(res.message || "Ingested item into ORM Dashboard database!", "ok");
-    } catch (err: any) {
-      showToast(err?.message || "Failed to ingest item", "err");
-    } finally {
-      setIngestingId(null);
-    }
-  }
 
-  async function handleIngestAllFiltered() {
-    if (filteredMentions.length === 0) return;
-    try {
-      setIngestingId("ALL");
-      const res = await api.ingestGoogleMentions({
-        items: filteredMentions,
-        keyword: customKeyword.trim() || brand,
-      });
-      showToast(res.message || `Ingested ${filteredMentions.length} mention(s) into ORM Dashboard!`, "ok");
-    } catch (err: any) {
-      showToast(err?.message || "Failed to ingest mentions", "err");
-    } finally {
-      setIngestingId(null);
-    }
-  }
 
   async function handleExportExcel() {
     if (filteredMentions.length === 0) {
@@ -722,16 +692,6 @@ export function GoogleScraperPage() {
               <>📊 Export Excel ({filteredMentions.length})</>
             )}
           </button>
-          {filteredMentions.length > 0 && (
-            <button
-              onClick={handleIngestAllFiltered}
-              disabled={ingestingId === "ALL"}
-              className="btn btn-secondary"
-              style={{ fontSize: 12, padding: "8px 14px" }}
-            >
-              {ingestingId === "ALL" ? "Ingesting..." : `📥 Ingest Filtered (${filteredMentions.length}) to ORM DB`}
-            </button>
-          )}
         </div>
       </div>
 
@@ -747,7 +707,6 @@ export function GoogleScraperPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {filteredMentions.map((item) => {
             const isNew = sessionNewIds.has(item.id);
-            const isIngesting = ingestingId === item.id;
 
             return (
               <div
@@ -952,19 +911,6 @@ export function GoogleScraperPage() {
                     )}
                   </div>
 
-                  <button
-                    onClick={() => handleIngestItem(item)}
-                    disabled={isIngesting}
-                    className="btn btn-secondary"
-                    style={{
-                      fontSize: 12,
-                      padding: "6px 12px",
-                      whiteSpace: "nowrap",
-                    }}
-                    title="Ingest item into ORM Dashboard Prisma DB for AI Sentiment Analysis"
-                  >
-                    {isIngesting ? "Ingesting..." : "📥 Ingest to ORM"}
-                  </button>
                 </div>
               </div>
             );
