@@ -3,7 +3,8 @@ import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
+import path from "path";
 import { env, refreshEnvFromDisk, platformStatus } from "./config/env";
 import { requireAuth } from "./middleware/auth";
 import { authRouter } from "./routes/auth";
@@ -23,9 +24,20 @@ const app = express();
 
 // Keep the schema in step with the code on every boot. Swap for `prisma migrate deploy`
 // once the schema stabilises and tenants hold data you can't afford to reshape.
+// Runs from the backend directory with an explicit schema path so it works no matter
+// what cwd the process was launched from (pm2, npm --prefix, systemd...).
 try {
+  const backendDir = path.resolve(__dirname, "..");
+  // Call the CLI's JS entry with the running Node binary: no shell, so no quoting
+  // differences between Windows cmd and POSIX sh.
+  const prismaCli = require.resolve("prisma/build/index.js", { paths: [backendDir] });
+  const schema = path.join(backendDir, "prisma", "schema.prisma");
   console.log("Syncing database schema...");
-  execSync("npx prisma db push --skip-generate", { stdio: "inherit" });
+  execFileSync(process.execPath, [prismaCli, "db", "push", "--skip-generate", "--schema", schema], {
+    stdio: "inherit",
+    cwd: backendDir,
+    timeout: 120_000,
+  });
 } catch (err: any) {
   console.warn("Schema sync notice:", err?.message || err);
 }

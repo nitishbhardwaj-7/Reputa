@@ -1,4 +1,11 @@
 import { PrismaClient } from "@prisma/client";
+import dotenv from "dotenv";
+import path from "path";
+
+// This module is evaluated before anything else that imports it (imports are hoisted),
+// so it must load .env itself rather than rely on config/env.ts having run first.
+// Resolved relative to the source tree, not the cwd, so `npm --prefix` and pm2 both work.
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 function databaseUrl(): string {
   const raw = process.env.DATABASE_URL?.trim();
