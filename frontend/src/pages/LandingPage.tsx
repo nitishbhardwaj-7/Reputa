@@ -47,8 +47,8 @@ function HeroLines() {
   const rows = Array.from({ length: 9 }, (_, i) => 60 + i * 70);
   return (
     <svg className="hero-lines" viewBox="0 0 1200 760" preserveAspectRatio="none" aria-hidden>
-      {rows.map((y) => <line key={y} x1="0" y1={y} x2="1200" y2={y} pathLength={1} />)}
-      {[180, 420, 660, 900].map((x) => <line key={x} x1={x} y1="0" x2={x} y2="760" pathLength={1} />)}
+      {rows.map((y) => <line key={y} x1="0" y1={y} x2="1200" y2={y} />)}
+      {[180, 420, 660, 900].map((x) => <line key={x} x1={x} y1="0" x2={x} y2="760" />)}
       <path className="wave" pathLength={1} d="M0 520 C 120 500, 160 420, 260 440 S 420 560, 540 500 S 700 330, 820 380 S 980 520, 1100 440 L 1200 400" />
       <path className="wave" pathLength={1} style={{ opacity: 0.5 }} d="M0 600 C 150 580, 200 660, 320 640 S 520 540, 640 600 S 860 700, 980 620 L 1200 580" />
     </svg>
@@ -75,11 +75,11 @@ export function LandingPage() {
       /* hero entrance */
       const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
       tl.from(".mk-nav", { y: -10, opacity: 0, duration: 0.6 })
+        .from(".hero-lines .wave", { strokeDashoffset: 1, duration: 1.4, ease: "power2.inOut", stagger: 0.15 }, 0)
         .from(".hero .eyebrow", { clipPath: "inset(0 100% 0 0)", duration: 0.7 }, "-=0.35")
         .from(".hero .ln-in", { yPercent: 112, duration: 1, ease: "power4.out", stagger: { each: 0.09 } }, "-=0.45")
         .from(".hero .lede, .hero .actions, .hero .fine", { y: 18, opacity: 0, duration: 0.7, stagger: 0.08 }, "-=0.6")
         .from(".hero-visual", { y: 80, scale: 0.94, opacity: 0, duration: 1.2, ease: "power4.out" }, "-=0.95")
-        .from(".hero-lines line, .hero-lines path", { strokeDashoffset: 1, duration: 1.6, ease: "power2.inOut", stagger: 0.035 }, "<")
         .add(() => drawAll(el.querySelector(".hero-visual")!), "-=1.1");
 
       /* dashboard keeps drifting as the page starts to move */
