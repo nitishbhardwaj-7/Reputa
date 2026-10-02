@@ -129,6 +129,11 @@ export const api = {
   retryAllFailed: () => request<{ ok: boolean; total: number; analyzed: number; failed: number }>("/retry/all", { method: "POST" }),
   clearAllFailed: () =>
     request<{ ok: boolean; deletedPosts: number; deletedComments: number; totalDeleted: number }>("/retry/all", { method: "DELETE" }),
+  resolveItem: (kind: "post" | "comment", id: string, resolved: boolean) =>
+    request<{ ok: boolean; id: string; resolvedAt: string | null }>(`/items/${kind}/${id}/resolve`, {
+      method: "PATCH",
+      body: JSON.stringify({ resolved }),
+    }),
   deletePost: (id: string) => request<{ ok: boolean; id: string }>(`/items/post/${id}`, { method: "DELETE" }),
   deleteComment: (id: string) => request<{ ok: boolean; id: string }>(`/items/comment/${id}`, { method: "DELETE" }),
   deleteFailedPost: (id: string) => request<{ ok: boolean; id: string }>(`/items/post/${id}`, { method: "DELETE" }),

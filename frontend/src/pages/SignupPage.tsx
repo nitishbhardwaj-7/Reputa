@@ -2,17 +2,31 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { APP_NAME } from "../brand";
+import { useToast } from "../components/ui";
+import { SocialButtons } from "./LoginPage";
 import "./marketing.css";
+
+const FREE_MAIL = new Set(["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "yahoo.com", "icloud.com", "proton.me", "protonmail.com", "aol.com"]);
+
+/** A sensible workspace name to start with; onboarding lets the user change it. */
+function guessCompany(name: string, email: string): string {
+  const domain = email.split("@")[1]?.toLowerCase() ?? "";
+  if (domain && !FREE_MAIL.has(domain)) {
+    const base = domain.split(".")[0];
+    return base.charAt(0).toUpperCase() + base.slice(1);
+  }
+  const first = name.trim().split(/\s+/)[0] || "My";
+  return `${first}'s workspace`;
+}
 
 export function SignupPage() {
   const { signup } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [organizationName, setOrganizationName] = useState("");
-  const [brandName, setBrandName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -21,7 +35,8 @@ export function SignupPage() {
     setBusy(true);
     setError(null);
     try {
-      await signup({ name, email, password, organizationName, brandName: brandName || organizationName });
+      const company = guessCompany(name, email);
+      await signup({ name, email, password, organizationName: company, brandName: company });
       navigate("/app/onboarding", { replace: true });
     } catch (err: any) {
       setError(err?.message || "Could not create your account.");
@@ -31,62 +46,34 @@ export function SignupPage() {
   }
 
   return (
-    <div className="auth-split mk">
-      <aside className="auth-side">
-        <Link to="/" className="wordmark" style={{ padding: 0, border: "none", textDecoration: "none" }}>
-          <span className="mark">{APP_NAME[0]}</span>
-          <span className="name">{APP_NAME}</span>
-        </Link>
-        <div>
-          <h2>Two minutes from now, your first scan is running.</h2>
-          <p>Create a workspace, tell us the brand to protect, and pick your platforms. Everything after that is automatic.</p>
-          <ul style={{ color: "var(--text-dim)", lineHeight: 1.9, paddingLeft: 18, marginTop: 20 }}>
-            <li>Hourly scans across six platforms</li>
-            <li>AI sentiment on every mention</li>
-            <li>Negative alerts straight to your inbox</li>
-          </ul>
-        </div>
-        <div className="quote">Free during early access. No credit card.</div>
-      </aside>
-
-      <main className="auth-main">
-        <div className="auth-card fade-in">
-          <h1>Create your workspace</h1>
-          <p className="sub">Start monitoring your brand in minutes.</p>
+    <div className="light auth">
+      <div className="pane">
+        <Link to="/" className="wordmark"><span className="mark">{APP_NAME[0]}</span>{APP_NAME}</Link>
+        <div className="form">
+          <h1>Create your account</h1>
+          <p className="sub">Start monitoring your brand in minutes.<br />No credit card required.</p>
           <form onSubmit={onSubmit}>
             {error && <div className="err">{error}</div>}
-            <div className="two">
-              <label>
-                Your name
-                <input type="text" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" />
-              </label>
-              <label>
-                Company
-                <input type="text" autoComplete="organization" required value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} placeholder="Acme Inc." />
-              </label>
-            </div>
-            <label>
-              Brand to monitor
-              <input type="text" value={brandName} onChange={(e) => setBrandName(e.target.value)} placeholder={organizationName || "Acme"} />
-              <span className="field-hint">The name people use when they talk about you. Defaults to your company name.</span>
-            </label>
-            <label>
-              Work email
-              <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" />
-            </label>
-            <label>
-              Password
-              <input type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" />
-            </label>
-            <button type="submit" className="btn-primary" disabled={busy}>
-              {busy ? <span className="spinner" /> : "Create workspace →"}
-            </button>
+            <div className="field"><label>Full name</label><input type="text" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" /></div>
+            <div className="field"><label>Work email</label><input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" /></div>
+            <div className="field"><label>Password</label><input type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Create a strong password" /></div>
+            <button type="submit" className="btn primary" disabled={busy}>{busy ? <span className="spinner" /> : "Create account"}</button>
           </form>
-          <div className="alt">
-            Already have an account? <Link to="/login">Sign in</Link>
-          </div>
+          <div className="or">or continue with</div>
+          <SocialButtons onUnavailable={() => toast.show("Single sign-on is coming soon — use your email and password for now.")} />
+          <div className="alt">Already have an account? <Link to="/login">Sign in</Link></div>
         </div>
-      </main>
+        <div />
+      </div>
+      <aside className="side dark">
+        <div className="wordmark"><span className="mark">{APP_NAME[0]}</span>{APP_NAME}</div>
+        <div>
+          <h2>Two minutes from now, your first scan is running.</h2>
+          <p>Create an account, tell us the brand to protect and pick your sources. Everything after that is automatic.</p>
+        </div>
+        <p className="mini faint" style={{ fontSize: 12.5 }}>Free trial · No credit card · Cancel anytime</p>
+      </aside>
+      {toast.node}
     </div>
   );
 }

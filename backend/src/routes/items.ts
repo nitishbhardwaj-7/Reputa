@@ -75,6 +75,26 @@ itemsRouter.get("/search", async (req, res, next) => {
   }
 });
 
+// PATCH /items/:kind/:id/resolve { resolved: boolean } — mark a mention handled (or reopen it)
+itemsRouter.patch("/items/:kind/:id/resolve", async (req, res, next) => {
+  try {
+    const orgId = orgOf(req);
+    const { kind, id } = req.params;
+    const resolved = req.body?.resolved !== false;
+    const data = { resolvedAt: resolved ? new Date() : null };
+    const result =
+      kind === "post"
+        ? await prisma.post.updateMany({ where: { id, organizationId: orgId }, data })
+        : kind === "comment"
+          ? await prisma.comment.updateMany({ where: { id, organizationId: orgId }, data })
+          : { count: 0 };
+    if (result.count === 0) return res.status(404).json({ error: "Mention not found." });
+    res.json({ ok: true, id, resolvedAt: data.resolvedAt });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // DELETE /items/post/:id — removes a post and its comments (tenant-scoped)
 itemsRouter.delete("/items/post/:id", async (req, res, next) => {
   try {

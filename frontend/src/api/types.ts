@@ -56,6 +56,10 @@ export interface Overview {
   positivePct: number;
   negativePct: number;
   neutralPct: number;
+  /** Negative mentions not yet marked handled. */
+  openAlerts?: number;
+  /** Negative-mention emails sent in the last 24 hours. */
+  alertsSent24h?: number;
 }
 
 export interface TrendBucket {
@@ -99,6 +103,9 @@ export interface BaseItem {
   status: ProcessingStatus;
   processingError: string | null;
   platform?: string | null;
+  alertSent?: boolean;
+  analyzedAt?: string | null;
+  resolvedAt?: string | null;
   createdAt: string;
 }
 

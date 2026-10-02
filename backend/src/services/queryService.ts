@@ -225,15 +225,21 @@ export async function getOverview(
   const pWhere = postWhere(orgId, f);
   const cWhere = commentWhere(orgId, f);
 
-  const [totalPosts, totalComments, postAgg, commentAgg, sourceAgg, platformAgg, trend] = await Promise.all([
-    prisma.post.count({ where: pWhere }),
-    prisma.comment.count({ where: cWhere }),
-    prisma.post.groupBy({ by: ["sentiment"], where: pWhere, _count: true }),
-    prisma.comment.groupBy({ by: ["sentiment"], where: cWhere, _count: true }),
-    prisma.post.groupBy({ by: ["source"], where: pWhere, _count: true }),
-    prisma.post.groupBy({ by: ["platform"], where: pWhere, _count: true }),
-    getTrend(orgId, f),
-  ]);
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [totalPosts, totalComments, postAgg, commentAgg, sourceAgg, platformAgg, trend, openAlertPosts, openAlertComments, alerts24hPosts, alerts24hComments] =
+    await Promise.all([
+      prisma.post.count({ where: pWhere }),
+      prisma.comment.count({ where: cWhere }),
+      prisma.post.groupBy({ by: ["sentiment"], where: pWhere, _count: true }),
+      prisma.comment.groupBy({ by: ["sentiment"], where: cWhere, _count: true }),
+      prisma.post.groupBy({ by: ["source"], where: pWhere, _count: true }),
+      prisma.post.groupBy({ by: ["platform"], where: pWhere, _count: true }),
+      getTrend(orgId, f),
+      prisma.post.count({ where: { AND: [pWhere, { sentiment: "NEGATIVE", resolvedAt: null }] } }),
+      prisma.comment.count({ where: { AND: [cWhere, { sentiment: "NEGATIVE", resolvedAt: null }] } }),
+      prisma.post.count({ where: { AND: [pWhere, { sentiment: "NEGATIVE", alertSent: true, analyzedAt: { gte: dayAgo } }] } }),
+      prisma.comment.count({ where: { AND: [cWhere, { sentiment: "NEGATIVE", alertSent: true, analyzedAt: { gte: dayAgo } }] } }),
+    ]);
 
   const counts: Record<string, number> = { POSITIVE: 0, NEGATIVE: 0, NEUTRAL: 0 };
   for (const row of [...postAgg, ...commentAgg]) {
@@ -259,6 +265,9 @@ export async function getOverview(
     trend,
     bySource: { scraper: totalPosts - googlePosts + totalComments, google: googlePosts },
     byPlatform,
+    // Negative mentions nobody has marked handled yet, and alerts emailed in the last day.
+    openAlerts: openAlertPosts + openAlertComments,
+    alertsSent24h: alerts24hPosts + alerts24hComments,
     totalAnalyzed,
     positive: counts.POSITIVE,
     negative: counts.NEGATIVE,

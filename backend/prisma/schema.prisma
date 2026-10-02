@@ -166,6 +166,8 @@ model Post {
   analyzedAt      DateTime?
   alertSent       Boolean   @default(false)
   isCompetitor    Boolean   @default(false)
+  // Set when a user marks the mention handled; clears it from open alerts.
+  resolvedAt      DateTime?
 
   // "scraper" (Playwright platform scrapers) or "google" (SERP via Serper). Both land
   // in this table so a tenant's total is counted once, in one place.
@@ -223,6 +225,7 @@ model Comment {
   analyzedAt      DateTime?
   alertSent       Boolean   @default(false)
   isCompetitor    Boolean   @default(false)
+  resolvedAt      DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
