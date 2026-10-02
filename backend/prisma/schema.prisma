@@ -1,5 +1,8 @@
-// Prisma schema for the ORM Dashboard.
-// Default datasource is SQLite for zero-config local setup.
+// Prisma schema for the ORM SaaS platform.
+//
+// Multi-tenant: every piece of customer data hangs off an Organization. Users belong
+// to exactly one organization. Platform-level configuration (the AI / search / SMTP
+// keys the operator provides) lives in SystemSetting and is never exposed to tenants.
 
 generator client {
   provider = "prisma-client-js"
@@ -10,104 +13,171 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Platform Keyword card registered for manual & automated hourly scraping.
+// ---------------------------------------------------------------------------
+// Tenancy & auth
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  // The brand being monitored. Used as the default search query and in alert emails.
+  brandName   String
+  alertEmails String[] @default([])
+  plan        String   @default("free") // "free" | "pro" | "enterprise"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users            User[]
+  keywords         Keyword[]
+  platformKeywords PlatformKeyword[]
+  competitorCards  CompetitorCard[]
+  scrapeRuns       ScrapeRun[]
+  posts            Post[]
+  comments         Comment[]
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  passwordHash   String
+  name           String
+  role           String       @default("owner") // "owner" | "member"
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  lastLoginAt    DateTime?
+
+  @@index([organizationId])
+}
+
+// ---------------------------------------------------------------------------
+// Monitoring configuration (per organization)
+// ---------------------------------------------------------------------------
+
+// A keyword card the hourly cron scrapes on one platform.
 model PlatformKeyword {
-  id          String    @id @default(cuid())
-  platform    String    // "reddit" | "quora" | "teamblind" | "trustpilot"
-  keyword     String
-  searchUrl   String?
-  enabled     Boolean   @default(true)
-  lastRunAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  platform       String // "reddit" | "quora" | "teamblind" | "trustpilot" | "linkedin"
+  keyword        String
+  searchUrl      String?
+  enabled        Boolean      @default(true)
+  lastRunAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  @@unique([platform, keyword])
+  @@unique([organizationId, platform, keyword])
+  @@index([organizationId])
 }
 
-// Competitor Card registered for competitor analysis (basic scraping without AI sentiment analysis).
+// A competitor brand tracked alongside the tenant's own brand.
 model CompetitorCard {
-  id          String    @id @default(cuid())
-  platform    String    // "reddit" | "quora" | "teamblind" | "trustpilot" | "all"
-  keyword     String
-  searchUrl   String?
-  enabled     Boolean   @default(true)
-  lastRunAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  platform       String // "reddit" | "quora" | "teamblind" | "trustpilot" | "linkedin"
+  keyword        String
+  searchUrl      String?
+  enabled        Boolean      @default(true)
+  lastRunAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  @@unique([platform, keyword])
+  @@unique([organizationId, platform, keyword])
+  @@index([organizationId])
 }
+
+// ---------------------------------------------------------------------------
+// Mentions
+// ---------------------------------------------------------------------------
 
 model Keyword {
-  id        String   @id @default(cuid())
-  term      String   @unique
-  createdAt DateTime @default(now())
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  term           String
+  createdAt      DateTime     @default(now())
 
   scrapeRuns ScrapeRun[]
   posts      Post[]
   comments   Comment[]
+
+  // The same term can legitimately be tracked by two different tenants.
+  @@unique([organizationId, term])
+  @@index([organizationId])
 }
 
 model ScrapeRun {
-  id          String   @id @default(cuid())
-  keywordId   String
-  keyword     Keyword  @relation(fields: [keywordId], references: [id])
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  keywordId      String
+  keyword        Keyword      @relation(fields: [keywordId], references: [id], onDelete: Cascade)
 
-  status      String   @default("RECEIVED")
-  rawResponse String
-  itemCount   Int      @default(0)
+  status       String  @default("RECEIVED")
+  // Bounded raw scraper payload kept for debugging (see lib/raw.ts).
+  rawResponse  String
+  itemCount    Int     @default(0)
   errorMessage String?
 
-  startedAt   DateTime @default(now())
+  startedAt   DateTime  @default(now())
   completedAt DateTime?
 
   posts    Post[]
   comments Comment[]
 
+  @@index([organizationId])
   @@index([keywordId])
 }
 
 model Post {
-  id            String   @id @default(cuid())
-  sourceKey     String   @unique
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Dedupe key derived from keyword + source id/url/text. Unique per tenant, not
+  // globally: two tenants tracking the same keyword each get their own copy.
+  sourceKey      String
 
-  keywordId     String
-  keyword       Keyword  @relation(fields: [keywordId], references: [id])
-  scrapeRunId   String
-  scrapeRun     ScrapeRun @relation(fields: [scrapeRunId], references: [id])
+  keywordId   String
+  keyword     Keyword   @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  scrapeRunId String
+  scrapeRun   ScrapeRun @relation(fields: [scrapeRunId], references: [id], onDelete: Cascade)
 
-  platform      String?
-  title         String?
-  text          String?
-  url           String?
-  author        String?
-  authorUrl     String?
-  publishedAt   DateTime?
+  platform    String?
+  title       String?
+  text        String?
+  url         String?
+  author      String?
+  authorUrl   String?
+  publishedAt DateTime?
 
   likes         Int?
   shares        Int?
   commentsCount Int?
 
-  rawItem       String
+  rawItem String
 
-  sentiment     String?
-  confidence    Float?
-  status        String   @default("RECEIVED")
+  sentiment       String?
+  confidence      Float?
+  status          String    @default("RECEIVED")
   processingError String?
-  analyzedAt    DateTime?
-  alertSent     Boolean  @default(false)
-  isCompetitor  Boolean  @default(false)
+  analyzedAt      DateTime?
+  alertSent       Boolean   @default(false)
+  isCompetitor    Boolean   @default(false)
 
-  // Which subsystem discovered this mention: "scraper" (Reddit/Quora/... Playwright
-  // scrapers) or "google" (Google/Bing/YouTube SERP via Serper). Both land in this
-  // table so totals are counted once, in one place.
-  source        String   @default("scraper")
+  // "scraper" (Playwright platform scrapers) or "google" (SERP via Serper). Both land
+  // in this table so a tenant's total is counted once, in one place.
+  source String @default("scraper")
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  comments      Comment[]
+  comments Comment[]
 
+  @@unique([organizationId, sourceKey])
+  @@index([organizationId])
   @@index([keywordId])
   @@index([sentiment])
   @@index([status])
@@ -117,45 +187,48 @@ model Post {
 }
 
 model Comment {
-  id            String   @id @default(cuid())
-  sourceKey     String   @unique
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceKey      String
 
-  keywordId     String
-  keyword       Keyword  @relation(fields: [keywordId], references: [id])
-  scrapeRunId   String
-  scrapeRun     ScrapeRun @relation(fields: [scrapeRunId], references: [id])
+  keywordId   String
+  keyword     Keyword   @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  scrapeRunId String
+  scrapeRun   ScrapeRun @relation(fields: [scrapeRunId], references: [id], onDelete: Cascade)
 
-  postId        String?
-  post          Post?    @relation(fields: [postId], references: [id])
+  postId String?
+  post   Post?   @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-  // Reply threading. Top-level comments have parentCommentId = null and depth 0;
-  // a reply to a reply is depth 2, and so on.
+  // Reply threading. Top-level comments have parentCommentId = null and depth 0.
   parentCommentId String?
-  parentComment Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  replies       Comment[] @relation("CommentReplies")
-  depth         Int      @default(0)
+  parentComment   Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replies         Comment[] @relation("CommentReplies")
+  depth           Int       @default(0)
 
-  text          String?
-  url           String?
-  author        String?
-  authorUrl     String?
-  publishedAt   DateTime?
+  text        String?
+  url         String?
+  author      String?
+  authorUrl   String?
+  publishedAt DateTime?
 
-  likes         Int?
+  likes Int?
 
-  rawItem       String
+  rawItem String
 
-  sentiment     String?
-  confidence    Float?
-  status        String   @default("RECEIVED")
+  sentiment       String?
+  confidence      Float?
+  status          String    @default("RECEIVED")
   processingError String?
-  analyzedAt    DateTime?
-  alertSent     Boolean  @default(false)
-  isCompetitor  Boolean  @default(false)
+  analyzedAt      DateTime?
+  alertSent       Boolean   @default(false)
+  isCompetitor    Boolean   @default(false)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
+  @@unique([organizationId, sourceKey])
+  @@index([organizationId])
   @@index([keywordId])
   @@index([postId])
   @@index([parentCommentId])
@@ -165,7 +238,10 @@ model Comment {
   @@index([isCompetitor])
 }
 
-// Persistent key-value settings stored directly in database for production deployment (Railway/Neon)
+// ---------------------------------------------------------------------------
+// Platform-level configuration (operator only, never tenant-visible)
+// ---------------------------------------------------------------------------
+
 model SystemSetting {
   key       String   @id
   value     String

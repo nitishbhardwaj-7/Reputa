@@ -18,30 +18,17 @@ export interface ItemFilters {
   pageSize?: number;
 }
 
-function postWhere(f: ItemFilters): Prisma.PostWhereInput {
-  const conditions: Prisma.PostWhereInput[] = [
-    { isCompetitor: false },
-  ];
+export const SCRAPER_PLATFORMS = ["reddit", "quora", "teamblind", "trustpilot", "linkedin"] as const;
 
-  if (f.source) {
-    conditions.push({ source: f.source });
-  }
+function postWhere(orgId: string, f: ItemFilters): Prisma.PostWhereInput {
+  const conditions: Prisma.PostWhereInput[] = [{ organizationId: orgId }, { isCompetitor: false }];
+
+  if (f.source) conditions.push({ source: f.source });
 
   if (f.keyword && f.keyword.trim()) {
-    const kw = f.keyword.trim();
-    conditions.push({
-      keyword: {
-        term: {
-          equals: kw,
-          mode: "insensitive",
-        },
-      },
-    });
+    conditions.push({ keyword: { term: { equals: f.keyword.trim(), mode: "insensitive" } } });
   }
-
-  if (f.sentiment) {
-    conditions.push({ sentiment: f.sentiment });
-  }
+  if (f.sentiment) conditions.push({ sentiment: f.sentiment });
 
   if (f.platform && f.platform !== "all") {
     const p = f.platform.toLowerCase().trim();
@@ -61,9 +48,7 @@ function postWhere(f: ItemFilters): Prisma.PostWhereInput {
   }
 
   if (f.author && f.author.trim()) {
-    conditions.push({
-      author: { contains: f.author.trim(), mode: "insensitive" },
-    });
+    conditions.push({ author: { contains: f.author.trim(), mode: "insensitive" } });
   }
 
   if (f.search && f.search.trim()) {
@@ -77,13 +62,11 @@ function postWhere(f: ItemFilters): Prisma.PostWhereInput {
     });
   }
 
-  return conditions.length > 0 ? { AND: conditions } : {};
+  return { AND: conditions };
 }
 
-function commentWhere(f: ItemFilters): Prisma.CommentWhereInput {
-  const conditions: Prisma.CommentWhereInput[] = [
-    { isCompetitor: false },
-  ];
+function commentWhere(orgId: string, f: ItemFilters): Prisma.CommentWhereInput {
+  const conditions: Prisma.CommentWhereInput[] = [{ organizationId: orgId }, { isCompetitor: false }];
 
   if (f.source === "google") {
     // Google SERP results are posts only; no comment can match this filter.
@@ -91,20 +74,9 @@ function commentWhere(f: ItemFilters): Prisma.CommentWhereInput {
   }
 
   if (f.keyword && f.keyword.trim()) {
-    const kw = f.keyword.trim();
-    conditions.push({
-      keyword: {
-        term: {
-          equals: kw,
-          mode: "insensitive",
-        },
-      },
-    });
+    conditions.push({ keyword: { term: { equals: f.keyword.trim(), mode: "insensitive" } } });
   }
-
-  if (f.sentiment) {
-    conditions.push({ sentiment: f.sentiment });
-  }
+  if (f.sentiment) conditions.push({ sentiment: f.sentiment });
 
   if (f.platform && f.platform !== "all") {
     const p = f.platform.toLowerCase().trim();
@@ -124,9 +96,7 @@ function commentWhere(f: ItemFilters): Prisma.CommentWhereInput {
   }
 
   if (f.author && f.author.trim()) {
-    conditions.push({
-      author: { contains: f.author.trim(), mode: "insensitive" },
-    });
+    conditions.push({ author: { contains: f.author.trim(), mode: "insensitive" } });
   }
 
   if (f.search && f.search.trim()) {
@@ -139,82 +109,38 @@ function commentWhere(f: ItemFilters): Prisma.CommentWhereInput {
     });
   }
 
-  return conditions.length > 0 ? { AND: conditions } : {};
+  return { AND: conditions };
 }
 
-export async function purgeSeedKeyword() {
-  try {
-    const seedKws = await prisma.keyword.findMany({
-      where: {
-        OR: [
-          { term: { equals: "seed", mode: "insensitive" } },
-          { term: { equals: "Seed", mode: "insensitive" } },
-        ],
-      },
-    });
+const lastSyncByOrg = new Map<string, number>();
 
-    for (const kw of seedKws) {
-      await prisma.comment.deleteMany({ where: { keywordId: kw.id } });
-      await prisma.post.deleteMany({ where: { keywordId: kw.id } });
-      await prisma.scrapeRun.deleteMany({ where: { keywordId: kw.id } });
-      await prisma.keyword.delete({ where: { id: kw.id } }).catch(() => {});
-    }
-  } catch (e) {
-    // Ignore if DB busy
-  }
-}
-
-let lastSyncTime = 0;
-
-export async function syncCompetitorFlags() {
+/**
+ * Keeps isCompetitor in step with the tenant's competitor cards: anything found under a
+ * keyword that matches a competitor card is a competitor mention. Throttled per tenant.
+ */
+export async function syncCompetitorFlags(orgId: string, force = false) {
   const now = Date.now();
-  if (now - lastSyncTime < 30000) return;
-  lastSyncTime = now;
+  if (!force && now - (lastSyncByOrg.get(orgId) ?? 0) < 30_000) return;
+  lastSyncByOrg.set(orgId, now);
 
   try {
-    const competitorCards = await (prisma as any).competitorCard.findMany().catch(() => []);
-    const compKeywordTerms = new Set(competitorCards.map((c: any) => c.keyword.toLowerCase().trim()));
+    const cards = await prisma.competitorCard.findMany({ where: { organizationId: orgId }, select: { keyword: true } });
+    const competitorTerms = new Set(cards.map((c) => c.keyword.toLowerCase().trim()));
 
-    const competitorNames = ["greencard inc.", "manifest law", "smart green card", "ellis porter", "alma law"];
-    competitorNames.forEach((n) => compKeywordTerms.add(n));
+    const keywords = await prisma.keyword.findMany({ where: { organizationId: orgId }, select: { id: true, term: true } });
+    const brandIds = keywords.filter((k) => !competitorTerms.has(k.term.toLowerCase().trim())).map((k) => k.id);
+    const compIds = keywords.filter((k) => competitorTerms.has(k.term.toLowerCase().trim())).map((k) => k.id);
 
-    const allKeywords = await prisma.keyword.findMany();
-
-    const brandKwIds: string[] = [];
-    const compKwIds: string[] = [];
-
-    for (const kw of allKeywords) {
-      const termLower = kw.term.toLowerCase().trim();
-      if (compKeywordTerms.has(termLower)) {
-        compKwIds.push(kw.id);
-      } else {
-        brandKwIds.push(kw.id);
-      }
+    if (brandIds.length) {
+      await prisma.post.updateMany({ where: { organizationId: orgId, keywordId: { in: brandIds }, isCompetitor: true }, data: { isCompetitor: false } });
+      await prisma.comment.updateMany({ where: { organizationId: orgId, keywordId: { in: brandIds }, isCompetitor: true }, data: { isCompetitor: false } });
     }
-
-    if (brandKwIds.length > 0) {
-      await prisma.post.updateMany({
-        where: { keywordId: { in: brandKwIds } },
-        data: { isCompetitor: false },
-      });
-      await prisma.comment.updateMany({
-        where: { keywordId: { in: brandKwIds } },
-        data: { isCompetitor: false },
-      });
-    }
-
-    if (compKwIds.length > 0) {
-      await prisma.post.updateMany({
-        where: { keywordId: { in: compKwIds } },
-        data: { isCompetitor: true },
-      });
-      await prisma.comment.updateMany({
-        where: { keywordId: { in: compKwIds } },
-        data: { isCompetitor: true },
-      });
+    if (compIds.length) {
+      await prisma.post.updateMany({ where: { organizationId: orgId, keywordId: { in: compIds }, isCompetitor: false }, data: { isCompetitor: true } });
+      await prisma.comment.updateMany({ where: { organizationId: orgId, keywordId: { in: compIds }, isCompetitor: false }, data: { isCompetitor: true } });
     }
   } catch (e) {
-    // Ignore error
+    console.warn("Notice syncing competitor flags:", e);
   }
 }
 
@@ -231,12 +157,11 @@ export interface TrendChange {
   pct: number | null;
 }
 
-/** Counts mentions in one window, by sentiment. */
-async function countWindow(f: ItemFilters, from: Date, to: Date): Promise<TrendBucket> {
+async function countWindow(orgId: string, f: ItemFilters, from: Date, to: Date): Promise<TrendBucket> {
   const windowed: ItemFilters = { ...f, dateFrom: from, dateTo: to };
   const [postAgg, commentAgg] = await Promise.all([
-    prisma.post.groupBy({ by: ["sentiment"], where: postWhere(windowed), _count: true }),
-    prisma.comment.groupBy({ by: ["sentiment"], where: commentWhere(windowed), _count: true }),
+    prisma.post.groupBy({ by: ["sentiment"], where: postWhere(orgId, windowed), _count: true }),
+    prisma.comment.groupBy({ by: ["sentiment"], where: commentWhere(orgId, windowed), _count: true }),
   ]);
 
   const bucket: TrendBucket = { total: 0, positive: 0, negative: 0, neutral: 0 };
@@ -258,12 +183,10 @@ function change(current: number, previous: number): TrendChange {
 }
 
 /**
- * Week-over-week momentum: the last `windowDays` against the `windowDays` before it,
- * by publish date. createdAt would only measure how much scraping we happened to do.
- * Deliberately independent of any date range picked in the UI, so the arrows always
- * mean the same thing.
+ * Week-over-week momentum by publish date, deliberately independent of the date range
+ * picked in the UI so the arrows always mean the same thing.
  */
-export async function getTrend(f: ItemFilters = {}, windowDays = 7) {
+export async function getTrend(orgId: string, f: ItemFilters = {}, windowDays = 7) {
   const now = new Date();
   const spanMs = windowDays * 24 * 60 * 60 * 1000;
   const currentFrom = new Date(now.getTime() - spanMs);
@@ -271,8 +194,8 @@ export async function getTrend(f: ItemFilters = {}, windowDays = 7) {
 
   const base: ItemFilters = { ...f, dateFrom: undefined, dateTo: undefined };
   const [current, previous] = await Promise.all([
-    countWindow(base, currentFrom, now),
-    countWindow(base, previousFrom, currentFrom),
+    countWindow(orgId, base, currentFrom, now),
+    countWindow(orgId, base, previousFrom, currentFrom),
   ]);
 
   return {
@@ -289,23 +212,18 @@ export async function getTrend(f: ItemFilters = {}, windowDays = 7) {
 }
 
 export async function getOverview(
+  orgId: string,
   keyword?: string,
   platform?: string,
   dateFrom?: Date,
   dateTo?: Date,
   source?: ItemFilters["source"]
 ) {
-  await syncCompetitorFlags().catch(() => {});
+  await syncCompetitorFlags(orgId).catch(() => {});
 
-  const f: ItemFilters = {
-    keyword,
-    platform: platform && platform !== "all" ? platform : undefined,
-    dateFrom,
-    dateTo,
-    source,
-  };
-  const pWhere = postWhere(f);
-  const cWhere = commentWhere(f);
+  const f: ItemFilters = { keyword, platform: platform && platform !== "all" ? platform : undefined, dateFrom, dateTo, source };
+  const pWhere = postWhere(orgId, f);
+  const cWhere = commentWhere(orgId, f);
 
   const [totalPosts, totalComments, postAgg, commentAgg, sourceAgg, platformAgg, trend] = await Promise.all([
     prisma.post.count({ where: pWhere }),
@@ -314,7 +232,7 @@ export async function getOverview(
     prisma.comment.groupBy({ by: ["sentiment"], where: cWhere, _count: true }),
     prisma.post.groupBy({ by: ["source"], where: pWhere, _count: true }),
     prisma.post.groupBy({ by: ["platform"], where: pWhere, _count: true }),
-    getTrend(f),
+    getTrend(orgId, f),
   ]);
 
   const counts: Record<string, number> = { POSITIVE: 0, NEGATIVE: 0, NEUTRAL: 0 };
@@ -325,12 +243,13 @@ export async function getOverview(
   const totalAnalyzed = counts.POSITIVE + counts.NEGATIVE + counts.NEUTRAL;
   const pct = (n: number) => (totalAnalyzed > 0 ? Math.round((n / totalAnalyzed) * 1000) / 10 : 0);
 
-  // One total, split by where it came from: scraper posts + their comments vs Google SERP posts.
   const googlePosts = sourceAgg.find((r) => r.source === "google")?._count ?? 0;
-  const scraperPosts = totalPosts - googlePosts;
   const byPlatform: Record<string, number> = {};
   for (const row of platformAgg) {
-    if (row.platform) byPlatform[row.platform.toLowerCase()] = (byPlatform[row.platform.toLowerCase()] || 0) + row._count;
+    if (row.platform) {
+      const key = row.platform.toLowerCase();
+      byPlatform[key] = (byPlatform[key] || 0) + row._count;
+    }
   }
 
   return {
@@ -338,10 +257,7 @@ export async function getOverview(
     totalComments,
     totalMentions: totalPosts + totalComments,
     trend,
-    bySource: {
-      scraper: scraperPosts + totalComments,
-      google: googlePosts,
-    },
+    bySource: { scraper: totalPosts - googlePosts + totalComments, google: googlePosts },
     byPlatform,
     totalAnalyzed,
     positive: counts.POSITIVE,
@@ -353,8 +269,8 @@ export async function getOverview(
   };
 }
 
-export async function getItems(f: ItemFilters) {
-  await syncCompetitorFlags().catch(() => {});
+export async function getItems(orgId: string, f: ItemFilters) {
+  await syncCompetitorFlags(orgId).catch(() => {});
 
   const page = f.page && f.page > 0 ? f.page : 1;
   const pageSize = f.pageSize && f.pageSize > 0 ? Math.min(f.pageSize, 200) : 50;
@@ -362,38 +278,36 @@ export async function getItems(f: ItemFilters) {
 
   const wantPosts = f.type !== "comment";
   const wantComments = f.type !== "post";
+  const pWhere = postWhere(orgId, f);
+  const cWhere = commentWhere(orgId, f);
 
   const [posts, comments, postCount, commentCount] = await Promise.all([
     wantPosts
-      ? prisma.post.findMany({
-          where: postWhere(f),
-          include: { keyword: true },
-          orderBy: { publishedAt: "desc" },
-          skip,
-          take: pageSize,
-        })
+      ? prisma.post.findMany({ where: pWhere, include: { keyword: true }, orderBy: { publishedAt: "desc" }, skip, take: pageSize })
       : Promise.resolve([]),
     wantComments
       ? prisma.comment.findMany({
-          where: commentWhere(f),
+          where: cWhere,
           include: { keyword: true, post: { select: { url: true, text: true } } },
           orderBy: { publishedAt: "desc" },
           skip,
           take: pageSize,
         })
       : Promise.resolve([]),
-    wantPosts ? prisma.post.count({ where: postWhere(f) }) : Promise.resolve(0),
-    wantComments ? prisma.comment.count({ where: commentWhere(f) }) : Promise.resolve(0),
+    wantPosts ? prisma.post.count({ where: pWhere }) : Promise.resolve(0),
+    wantComments ? prisma.comment.count({ where: cWhere }) : Promise.resolve(0),
   ]);
 
   const items = [
     ...posts.map((p) => ({ type: "post" as const, ...p, keyword: p.keyword.term })),
     ...comments.map((c) => ({ type: "comment" as const, ...c, keyword: c.keyword.term })),
-  ].sort((a, b) => {
-    const da = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
-    const db = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
-    return db - da;
-  }).slice(0, pageSize);
+  ]
+    .sort((a, b) => {
+      const da = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+      const db = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+      return db - da;
+    })
+    .slice(0, pageSize);
 
   return {
     items,
@@ -401,17 +315,15 @@ export async function getItems(f: ItemFilters) {
   };
 }
 
-export async function getKeywords() {
-  await purgeSeedKeyword();
-  await syncCompetitorFlags().catch(() => {});
+/** Brand keywords (competitor terms excluded) with mention counts. */
+export async function getKeywords(orgId: string) {
+  await syncCompetitorFlags(orgId).catch(() => {});
 
-  const competitorCards = await (prisma as any).competitorCard.findMany().catch(() => []);
-  const competitorTerms = new Set(competitorCards.map((c: any) => c.keyword.toLowerCase().trim()));
+  const cards = await prisma.competitorCard.findMany({ where: { organizationId: orgId }, select: { keyword: true } });
+  const competitorTerms = new Set(cards.map((c) => c.keyword.toLowerCase().trim()));
 
   const all = await prisma.keyword.findMany({
-    where: {
-      term: { notIn: ["seed", "Seed", "SEED"] },
-    },
+    where: { organizationId: orgId },
     orderBy: { createdAt: "desc" },
     include: { _count: { select: { posts: true, comments: true } } },
   });
@@ -419,65 +331,37 @@ export async function getKeywords() {
   return all.filter((kw) => !competitorTerms.has(kw.term.toLowerCase().trim()));
 }
 
-export async function getSentimentDistribution(keyword?: string, platform?: string, dateFrom?: Date, dateTo?: Date) {
-  return getOverview(keyword, platform, dateFrom, dateTo);
+export async function getSentimentDistribution(orgId: string, keyword?: string, platform?: string, dateFrom?: Date, dateTo?: Date) {
+  return getOverview(orgId, keyword, platform, dateFrom, dateTo);
 }
 
-export async function getSentimentByKeyword() {
-  await purgeSeedKeyword();
-  await syncCompetitorFlags().catch(() => {});
-
-  const competitorCards = await (prisma as any).competitorCard.findMany().catch(() => []);
-  const competitorTerms = new Set(competitorCards.map((c: any) => c.keyword.toLowerCase().trim()));
-
-  const keywords = await prisma.keyword.findMany({
-    where: {
-      term: { notIn: ["seed", "Seed", "SEED"] },
-    },
-  });
-
+export async function getSentimentByKeyword(orgId: string) {
+  const keywords = await getKeywords(orgId);
   const results = [];
   for (const kw of keywords) {
-    const termClean = kw.term.toLowerCase().trim();
-    if (competitorTerms.has(termClean)) continue;
-
-    const overview = await getOverview(kw.term);
-    if (overview.totalMentions > 0) {
-      results.push({ keyword: kw.term, ...overview });
-    }
+    const overview = await getOverview(orgId, kw.term);
+    if (overview.totalMentions > 0) results.push({ keyword: kw.term, ...overview });
   }
   return results;
 }
 
-export async function getSentimentByPlatform(keyword?: string, dateFrom?: Date, dateTo?: Date) {
-  const platforms = ["reddit", "quora", "teamblind", "trustpilot"];
+export async function getSentimentByPlatform(orgId: string, keyword?: string, dateFrom?: Date, dateTo?: Date) {
   const results = [];
-  for (const p of platforms) {
-    const overview = await getOverview(keyword, p, dateFrom, dateTo);
+  for (const p of SCRAPER_PLATFORMS) {
+    const overview = await getOverview(orgId, keyword, p, dateFrom, dateTo);
     results.push({ platform: p, ...overview });
   }
   return results;
 }
 
-export async function getSentimentOverTime(keyword?: string, platform?: string, dateFrom?: Date, dateTo?: Date) {
-  const f: ItemFilters = {
-    keyword,
-    platform: (platform && platform !== "all" ? platform : undefined) as any,
-    dateFrom,
-    dateTo,
-  };
-  const pWhere = { ...postWhere(f), publishedAt: { not: null }, sentiment: { not: null } };
-  const cWhere = { ...commentWhere(f), publishedAt: { not: null }, sentiment: { not: null } };
+export async function getSentimentOverTime(orgId: string, keyword?: string, platform?: string, dateFrom?: Date, dateTo?: Date) {
+  const f: ItemFilters = { keyword, platform: platform && platform !== "all" ? platform : undefined, dateFrom, dateTo };
+  const pWhere = { ...postWhere(orgId, f), publishedAt: { not: null }, sentiment: { not: null } };
+  const cWhere = { ...commentWhere(orgId, f), publishedAt: { not: null }, sentiment: { not: null } };
 
   const [posts, comments] = await Promise.all([
-    prisma.post.findMany({
-      where: pWhere,
-      select: { publishedAt: true, sentiment: true },
-    }),
-    prisma.comment.findMany({
-      where: cWhere,
-      select: { publishedAt: true, sentiment: true },
-    }),
+    prisma.post.findMany({ where: pWhere, select: { publishedAt: true, sentiment: true } }),
+    prisma.comment.findMany({ where: cWhere, select: { publishedAt: true, sentiment: true } }),
   ]);
 
   const buckets = new Map<string, { date: string; POSITIVE: number; NEGATIVE: number; NEUTRAL: number }>();
@@ -485,52 +369,42 @@ export async function getSentimentOverTime(keyword?: string, platform?: string, 
     if (!row.publishedAt || !row.sentiment) continue;
     const day = row.publishedAt.toISOString().slice(0, 10);
     if (!buckets.has(day)) buckets.set(day, { date: day, POSITIVE: 0, NEGATIVE: 0, NEUTRAL: 0 });
-    const sentimentKey = row.sentiment as "POSITIVE" | "NEGATIVE" | "NEUTRAL";
-    buckets.get(day)![sentimentKey]++;
+    buckets.get(day)![row.sentiment as "POSITIVE" | "NEGATIVE" | "NEUTRAL"]++;
   }
 
   return Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export async function getNegativeItems(f: Omit<ItemFilters, "sentiment">) {
-  return getItems({ ...f, sentiment: Sentiment.NEGATIVE });
+export async function getNegativeItems(orgId: string, f: Omit<ItemFilters, "sentiment">) {
+  return getItems(orgId, { ...f, sentiment: Sentiment.NEGATIVE });
 }
 
-export async function getNeutralItems(f: Omit<ItemFilters, "sentiment">) {
-  return getItems({ ...f, sentiment: Sentiment.NEUTRAL });
+export async function getNeutralItems(orgId: string, f: Omit<ItemFilters, "sentiment">) {
+  return getItems(orgId, { ...f, sentiment: Sentiment.NEUTRAL });
 }
 
-export async function getPositiveItems(f: Omit<ItemFilters, "sentiment">) {
-  return getItems({ ...f, sentiment: Sentiment.POSITIVE });
+export async function getPositiveItems(orgId: string, f: Omit<ItemFilters, "sentiment">) {
+  return getItems(orgId, { ...f, sentiment: Sentiment.POSITIVE });
 }
 
-export async function globalSearch(q: string, limit = 50) {
+export async function globalSearch(orgId: string, q: string, limit = 50) {
   const query = q.trim();
   if (!query) return { posts: [], comments: [], keywords: [] };
 
+  const textMatch = { OR: [{ text: { contains: query, mode: "insensitive" as const } }, { author: { contains: query, mode: "insensitive" as const } }] };
   const [posts, comments, keywords] = await Promise.all([
-    prisma.post.findMany({
-      where: { OR: [{ text: { contains: query } }, { author: { contains: query } }] },
-      include: { keyword: true },
-      take: limit,
-      orderBy: { publishedAt: "desc" },
-    }),
-    prisma.comment.findMany({
-      where: { OR: [{ text: { contains: query } }, { author: { contains: query } }] },
-      include: { keyword: true },
-      take: limit,
-      orderBy: { publishedAt: "desc" },
-    }),
-    prisma.keyword.findMany({ where: { term: { contains: query } } }),
+    prisma.post.findMany({ where: { organizationId: orgId, ...textMatch }, include: { keyword: true }, take: limit, orderBy: { publishedAt: "desc" } }),
+    prisma.comment.findMany({ where: { organizationId: orgId, ...textMatch }, include: { keyword: true }, take: limit, orderBy: { publishedAt: "desc" } }),
+    prisma.keyword.findMany({ where: { organizationId: orgId, term: { contains: query, mode: "insensitive" } } }),
   ]);
 
   return { posts, comments, keywords };
 }
 
-export async function getFailedItems() {
+export async function getFailedItems(orgId: string) {
   const [posts, comments] = await Promise.all([
-    prisma.post.findMany({ where: { status: "FAILED" }, include: { keyword: true } }),
-    prisma.comment.findMany({ where: { status: "FAILED" }, include: { keyword: true } }),
+    prisma.post.findMany({ where: { organizationId: orgId, status: "FAILED" }, include: { keyword: true } }),
+    prisma.comment.findMany({ where: { organizationId: orgId, status: "FAILED" }, include: { keyword: true } }),
   ]);
   return { posts, comments };
 }

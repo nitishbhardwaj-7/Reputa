@@ -59,12 +59,12 @@ export function normalizePlatformName(platformRaw?: string | null, urlRaw?: stri
   return "Web & Others";
 }
 
-export async function generateExcelReport(options: ExcelExportOptions = {}): Promise<Buffer> {
-  await syncCompetitorFlags().catch(() => {});
+export async function generateExcelReport(orgId: string, options: ExcelExportOptions = {}): Promise<Buffer> {
+  await syncCompetitorFlags(orgId).catch(() => {});
 
   const scope = options.scope ?? "all";
-  const pWhere: Prisma.PostWhereInput = {};
-  const cWhere: Prisma.CommentWhereInput = {};
+  const pWhere: Prisma.PostWhereInput = { organizationId: orgId };
+  const cWhere: Prisma.CommentWhereInput = { organizationId: orgId };
 
   if (scope === "brand") {
     pWhere.isCompetitor = false;

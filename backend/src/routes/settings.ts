@@ -1,125 +1,83 @@
 import { Router } from "express";
-import { getSettings, updateSettings } from "../config/env";
+import { z } from "zod";
 import { prisma } from "../lib/prisma";
+import { platformStatus, refreshEnvFromDisk } from "../config/env";
+import { sendNegativeMentionAlert, parseRecipientList } from "../services/emailService";
+import { orgOf } from "../middleware/auth";
 
 export const settingsRouter = Router();
 
-settingsRouter.get("/", async (_req, res, next) => {
+/**
+ * Tenant settings are the organization's own configuration. Integration keys belong
+ * to the platform operator and are never read or written here.
+ */
+
+const updateSchema = z.object({
+  name: z.string().trim().min(1, "Company name is required.").max(80).optional(),
+  brandName: z.string().trim().min(1, "Brand name is required.").max(80).optional(),
+  alertEmails: z.array(z.string().trim().toLowerCase().email("One of the alert emails is invalid.")).max(10).optional(),
+});
+
+settingsRouter.get("/", async (req, res, next) => {
   try {
-    res.json(await getSettings());
+    await refreshEnvFromDisk();
+    const org = await prisma.organization.findUnique({
+      where: { id: orgOf(req) },
+      select: { id: true, name: true, slug: true, brandName: true, alertEmails: true, plan: true, createdAt: true },
+    });
+    if (!org) return res.status(404).json({ error: "Organization not found." });
+    res.json({ organization: org, platform: platformStatus() });
   } catch (err) {
     next(err);
   }
 });
 
-settingsRouter.post("/", async (req, res, next) => {
+settingsRouter.patch("/", async (req, res, next) => {
   try {
-    const {
-      apifyApiUrl,
-      apifyApiKey,
-      aiApiUrl,
-      aiApiKey,
-      aiModel,
-      smtpHost,
-      smtpPort,
-      smtpUser,
-      smtpPass,
-      gmailUser,
-      gmailPass,
-      mailFrom,
-      alertEmail,
-      searchApiKey,
-      serperApiKey,
-      mongodbUri,
-      mongodbDb,
-      databaseUrl,
-    } = req.body ?? {};
+    const parsed = updateSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input." });
 
-    const updated = await updateSettings({
-      apifyApiUrl: typeof apifyApiUrl === "string" ? apifyApiUrl : undefined,
-      apifyApiKey: typeof apifyApiKey === "string" ? apifyApiKey : undefined,
-      aiApiUrl: typeof aiApiUrl === "string" ? aiApiUrl : undefined,
-      aiApiKey: typeof aiApiKey === "string" ? aiApiKey : undefined,
-      aiModel: typeof aiModel === "string" ? aiModel : undefined,
-      smtpHost: typeof smtpHost === "string" ? smtpHost : undefined,
-      smtpPort: typeof smtpPort === "string" ? smtpPort : undefined,
-      smtpUser: typeof smtpUser === "string" ? smtpUser : undefined,
-      smtpPass: typeof smtpPass === "string" ? smtpPass : undefined,
-      gmailUser: typeof gmailUser === "string" ? gmailUser : undefined,
-      gmailPass: typeof gmailPass === "string" ? gmailPass : undefined,
-      mailFrom: typeof mailFrom === "string" ? mailFrom : undefined,
-      alertEmail: typeof alertEmail === "string" ? alertEmail : undefined,
-      searchApiKey: typeof searchApiKey === "string" ? searchApiKey : undefined,
-      serperApiKey: typeof serperApiKey === "string" ? serperApiKey : undefined,
-      mongodbUri: typeof mongodbUri === "string" ? mongodbUri : undefined,
-      mongodbDb: typeof mongodbDb === "string" ? mongodbDb : undefined,
-      databaseUrl: typeof databaseUrl === "string" ? databaseUrl : undefined,
+    const data = parsed.data;
+    const org = await prisma.organization.update({
+      where: { id: orgOf(req) },
+      data: {
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.brandName !== undefined ? { brandName: data.brandName } : {}),
+        ...(data.alertEmails !== undefined ? { alertEmails: Array.from(new Set(parseRecipientList(data.alertEmails))) } : {}),
+      },
+      select: { id: true, name: true, slug: true, brandName: true, alertEmails: true, plan: true, createdAt: true },
     });
-
-    res.json({
-      ok: true,
-      message: "Settings updated successfully.",
-      settings: updated,
-    });
+    res.json({ ok: true, organization: org });
   } catch (err) {
     next(err);
   }
 });
 
-// POST /api/settings/test-email — send test alert email to all configured recipients via SMTP
-settingsRouter.post("/test-email", async (_req, res, _next) => {
+// POST /test-email — sends a sample alert to this organization's recipients
+settingsRouter.post("/test-email", async (req, res, next) => {
   try {
-    const { sendNegativeMentionAlert, parseRecipientList } = await import("../services/emailService");
-    const { env } = await import("../config/env");
+    const org = await prisma.organization.findUnique({ where: { id: orgOf(req) }, select: { brandName: true, alertEmails: true } });
+    if (!org) return res.status(404).json({ error: "Organization not found." });
+    if (org.alertEmails.length === 0) return res.status(400).json({ error: "Add at least one alert email first." });
+    if (!platformStatus().smtpConfigured) return res.status(503).json({ error: "Email delivery is not available on this platform yet." });
 
-    const recipients = parseRecipientList(env.ALERT_EMAIL);
-    if (recipients.length === 0) {
-      return res.status(400).json({ error: "No recipient emails configured in Alert Recipient Email(s)." });
-    }
-
-    const ok = await sendNegativeMentionAlert({
-      type: "post",
-      keyword: "EB1A Experts (SMTP Test Alert)",
-      platform: "reddit",
-      text: "✓ This is a test email sent from ORM Dashboard to confirm SMTP configuration and multi-recipient email delivery.",
-      author: "ORM Alert System",
-      url: "https://reddit.com",
-      sentiment: "NEGATIVE",
-      confidence: 0.98,
-      publishedAt: new Date(),
-    });
-
-    if (ok) {
-      res.json({
-        ok: true,
-        message: `✓ Test alert delivered successfully via SMTP to ${recipients.length} recipient(s): [${recipients.join(", ")}]!`,
-      });
-    } else {
-      res.status(500).json({
-        error: "Failed to deliver test email via SMTP. Please verify your SMTP Host, Username, Password, and Recipient addresses.",
-      });
-    }
-  } catch (err: any) {
-    res.status(500).json({ error: err?.message || "Unexpected error dispatching test email." });
-  }
-});
-
-// POST /api/settings/reset-database — empties all posts, comments, scrape runs, and keywords.
-settingsRouter.post("/reset-database", async (_req, res, next) => {
-  try {
-    const deletedComments = await prisma.comment.deleteMany({});
-    const deletedPosts = await prisma.post.deleteMany({});
-    const deletedScrapeRuns = await prisma.scrapeRun.deleteMany({});
-    const deletedKeywords = await prisma.keyword.deleteMany({});
-
-    res.json({
-      ok: true,
-      message: "Database emptied successfully.",
-      deletedComments: deletedComments.count,
-      deletedPosts: deletedPosts.count,
-      deletedScrapeRuns: deletedScrapeRuns.count,
-      deletedKeywords: deletedKeywords.count,
-    });
+    const ok = await sendNegativeMentionAlert(
+      {
+        type: "post",
+        keyword: org.brandName,
+        brandName: org.brandName,
+        platform: "test",
+        text: "This is a test alert confirming that negative-mention notifications reach your inbox.",
+        author: "Alert system",
+        url: "",
+        sentiment: "NEGATIVE",
+        confidence: 0.99,
+        publishedAt: new Date(),
+      },
+      org.alertEmails
+    );
+    if (!ok) return res.status(502).json({ error: "The mail server rejected the test message." });
+    res.json({ ok: true, message: `Test alert sent to ${org.alertEmails.join(", ")}.` });
   } catch (err) {
     next(err);
   }

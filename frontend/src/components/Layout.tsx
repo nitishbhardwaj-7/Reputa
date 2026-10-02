@@ -1,56 +1,83 @@
-import { NavLink, Outlet } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { api } from "../api/client";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useAuth } from "../auth/AuthContext";
+import { APP_NAME } from "../brand";
+
+const link = ({ isActive }: { isActive: boolean }) => `nav-link${isActive ? " active" : ""}`;
 
 export function Layout() {
-  const [health, setHealth] = useState<{ apifyConfigured: boolean; aiConfigured: boolean } | null>(null);
+  const { user, organization, logout } = useAuth();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    api.health().then(setHealth).catch(() => setHealth(null));
-  }, []);
+  async function handleLogout() {
+    await logout();
+    navigate("/login", { replace: true });
+  }
+
+  const initials = (user?.name || user?.email || "?")
+    .split(/\s+/)
+    .map((s) => s[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  const close = () => setOpen(false);
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <h1>
-          ORM <span>Dashboard</span>
-        </h1>
-        <NavLink to="/" end className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Overview
-        </NavLink>
-        <NavLink to="/explorer" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Posts &amp; Comments
-        </NavLink>
-        <NavLink to="/manual-scraper" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Keywords Cards
-        </NavLink>
-        <NavLink to="/competitor-dashboard" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Competitor Dashboard
-        </NavLink>
-        <NavLink to="/google-scraper" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Google Scraper
-        </NavLink>
-        <NavLink to="/negative" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Negative Mentions
-        </NavLink>
-        <NavLink to="/neutral" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Neutral Mentions
-        </NavLink>
-        <NavLink to="/positive" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Positive Mentions
-        </NavLink>
-        <NavLink to="/failed" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Failed / Retry
-        </NavLink>
-        <NavLink to="/settings" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Settings
-        </NavLink>
+      <div className="mobile-bar">
+        <div className="wordmark" style={{ padding: 0, margin: 0, border: "none" }}>
+          <span className="mark">{APP_NAME[0]}</span>
+          <span className="name">{APP_NAME}</span>
+        </div>
+        <button type="button" className="secondary" onClick={() => setOpen((v) => !v)} aria-label="Toggle navigation">
+          ☰
+        </button>
+      </div>
+      {open && <div className="scrim" onClick={close} />}
 
-        <div style={{ marginTop: "auto", padding: "10px 8px", fontSize: 11, color: "var(--text-dim)" }}>
-          {health && !health.aiConfigured && <div style={{ color: "#ffb4bd" }}>⚠ AI provider not configured</div>}
-          {health?.aiConfigured && <div>AI Integration Active</div>}
+      <aside className={`sidebar${open ? " open" : ""}`}>
+        <div className="wordmark">
+          <span className="mark">{APP_NAME[0]}</span>
+          <span className="name">{APP_NAME}</span>
+        </div>
+
+        {organization && (
+          <div className="org-chip">
+            <div className="org-name">{organization.name}</div>
+            <div className="org-brand">Monitoring: {organization.brandName}</div>
+          </div>
+        )}
+
+        <div className="nav-section">Monitor</div>
+        <NavLink to="/app" end className={link} onClick={close}>Overview</NavLink>
+        <NavLink to="/app/mentions" className={link} onClick={close}>Mentions</NavLink>
+        <NavLink to="/app/keywords" className={link} onClick={close}>Keywords</NavLink>
+        <NavLink to="/app/search-monitor" className={link} onClick={close}>Search Monitor</NavLink>
+        <NavLink to="/app/competitors" className={link} onClick={close}>Competitors</NavLink>
+
+        <div className="nav-section">Sentiment</div>
+        <NavLink to="/app/negative" className={link} onClick={close}><span className="dot negative" />Negative</NavLink>
+        <NavLink to="/app/neutral" className={link} onClick={close}><span className="dot neutral" />Neutral</NavLink>
+        <NavLink to="/app/positive" className={link} onClick={close}><span className="dot positive" />Positive</NavLink>
+
+        <div className="nav-section">Workspace</div>
+        <NavLink to="/app/failed" className={link} onClick={close}>Needs attention</NavLink>
+        <NavLink to="/app/settings" className={link} onClick={close}>Settings</NavLink>
+
+        <div className="user-block">
+          <div className="avatar">{initials}</div>
+          <div className="who">
+            <div className="n">{user?.name}</div>
+            <div className="e">{user?.email}</div>
+          </div>
+          <button type="button" className="ghost" onClick={handleLogout} title="Sign out">
+            Sign out
+          </button>
         </div>
       </aside>
+
       <main className="main">
         <Outlet />
       </main>

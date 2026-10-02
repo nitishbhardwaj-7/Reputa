@@ -1,6 +1,45 @@
 export type Sentiment = "POSITIVE" | "NEGATIVE" | "NEUTRAL";
 export type ProcessingStatus = "RECEIVED" | "PROCESSING" | "ANALYZED" | "FAILED";
 
+// ---------------------------------------------------------------- Auth / tenancy
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  role: "owner" | "member" | string;
+  createdAt: string;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  brandName: string;
+  alertEmails: string[];
+  plan: string;
+  createdAt?: string;
+}
+
+export interface AuthResponse {
+  user: AuthUser;
+  organization: Organization;
+}
+
+export interface PlatformStatus {
+  aiConfigured: boolean;
+  searchConfigured: boolean;
+  smtpConfigured: boolean;
+  apifyConfigured: boolean;
+}
+
+export interface OrgSettingsResponse {
+  organization: Organization;
+  platform: PlatformStatus;
+}
+
+// ---------------------------------------------------------------- Dashboard
+
 export interface Overview {
   totalPosts: number;
   totalComments: number;
@@ -85,17 +124,14 @@ export type FeedItem = PostItem | CommentItem;
 
 export interface ItemsResponse {
   items: FeedItem[];
-  pagination: { page: number; pageSize: number; totalPosts: number; totalComments: number; total: number };
+  pagination: { page: number; pageSize: number; totalPosts?: number; totalComments?: number; total: number };
 }
 
 export interface ItemFiltersQuery {
   keyword?: string;
   sentiment?: Sentiment;
   type?: "post" | "comment" | "both";
-  // Any platform label in the data: the scraper feeds plus Google SERP ones
-  // (news, web, youtube, facebook, ...).
   platform?: string;
-  /** Restrict to how the mention was discovered. Omit for the combined feed. */
   source?: "scraper" | "google";
   dateFrom?: string;
   dateTo?: string;
@@ -137,34 +173,6 @@ export interface SearchResponse {
   posts: (PostItem & { keyword: string })[];
   comments: (CommentItem & { keyword: string })[];
   keywords: { id: string; term: string }[];
-}
-
-export interface DashboardSettings {
-  apifyApiUrl: string;
-  apifyApiKey: string;
-  aiApiUrl: string;
-  aiApiKey: string;
-  aiModel: string;
-  smtpHost?: string;
-  smtpPort?: string;
-  smtpUser?: string;
-  smtpPass?: string;
-  gmailUser?: string;
-  gmailPass?: string;
-  mailFrom?: string;
-  alertEmail?: string;
-  searchApiKey?: string;
-  serperApiKey?: string;
-  mongodbUri?: string;
-  mongodbDb?: string;
-  databaseUrl?: string;
-  apifyConfigured?: boolean;
-  aiConfigured?: boolean;
-  smtpConfigured?: boolean;
-  gmailConfigured?: boolean;
-  searchApiConfigured?: boolean;
-  serperApiConfigured?: boolean;
-  databaseConfigured?: boolean;
 }
 
 export interface ManualScrapePayload {
@@ -219,6 +227,9 @@ export interface CompetitorOverview {
   totalComments: number;
   activeCardsCount: number;
   totalCardsCount: number;
+  positive?: number;
+  negative?: number;
+  neutral?: number;
 }
 
 export interface CronLogItem {
@@ -253,8 +264,7 @@ export interface GoogleMention {
   published?: string;
   first_seen?: string;
   date_status?: "confirmed" | "estimated" | "unknown";
-  /** Available now that Google mentions are stored alongside the scraper feeds. */
-  sentiment?: "POSITIVE" | "NEGATIVE" | "NEUTRAL" | null;
+  sentiment?: Sentiment | null;
   confidence?: number | null;
   keyword?: string;
 }
@@ -287,6 +297,3 @@ export interface GoogleIngestResult {
   failed: number;
   message: string;
 }
-
-
-

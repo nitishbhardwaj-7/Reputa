@@ -1,11 +1,12 @@
 import { prisma } from "../lib/prisma";
 import { ProcessingStatus } from "../types/status";
 import { buildSourceKey } from "../lib/hash";
+import { boundedRaw } from "../lib/raw";
 import { fetchApifyResults, ApifyError } from "./apifyService";
 import { normalizeApifyItems } from "./dataNormalizer";
-import { classifySentiment, AiSentimentError } from "./sentimentService";
+import { classifySentiment } from "./sentimentService";
 import { sendNegativeMentionAlert } from "./emailService";
-import { NormalizedComment, NormalizedPost } from "../types/normalized";
+import { NormalizedComment } from "../types/normalized";
 
 export interface RunScrapeResult {
   keyword: string;
@@ -20,23 +21,29 @@ export interface RunScrapeResult {
   warnings: string[];
 }
 
-export async function runScrapeForKeyword(keywordTerm: string): Promise<RunScrapeResult> {
+/** Finds or creates the tenant's Keyword row for a term. */
+export async function upsertKeyword(orgId: string, term: string) {
+  return prisma.keyword.upsert({
+    where: { organizationId_term: { organizationId: orgId, term } },
+    create: { organizationId: orgId, term },
+    update: {},
+  });
+}
+
+/** Apify-backed pipeline (legacy path; the Playwright scrapers are the primary source). */
+export async function runScrapeForKeyword(orgId: string, keywordTerm: string): Promise<RunScrapeResult> {
   const term = keywordTerm.trim();
   if (!term) throw new Error("Keyword must not be empty.");
 
-  const keyword = await prisma.keyword.upsert({
-    where: { term },
-    create: { term },
-    update: {},
-  });
+  const keyword = await upsertKeyword(orgId, term);
 
-  // 1) Apify — the only source of raw data.
   let rawItems: unknown[];
   try {
     rawItems = await fetchApifyResults(term);
   } catch (err) {
     const failedRun = await prisma.scrapeRun.create({
       data: {
+        organizationId: orgId,
         keywordId: keyword.id,
         status: ProcessingStatus.FAILED,
         rawResponse: "null",
@@ -51,12 +58,12 @@ export async function runScrapeForKeyword(keywordTerm: string): Promise<RunScrap
     );
   }
 
-  // 2) Store untouched raw response
   const scrapeRun = await prisma.scrapeRun.create({
     data: {
+      organizationId: orgId,
       keywordId: keyword.id,
       status: ProcessingStatus.RECEIVED,
-      rawResponse: JSON.stringify(rawItems),
+      rawResponse: boundedRaw(rawItems),
       itemCount: rawItems.length,
     },
   });
@@ -67,45 +74,31 @@ export async function runScrapeForKeyword(keywordTerm: string): Promise<RunScrap
       data: { status: ProcessingStatus.ANALYZED, completedAt: new Date() },
     });
     return {
-      keyword: term,
-      scrapeRunId: scrapeRun.id,
-      itemsReceived: 0,
-      postsCreated: 0,
-      commentsCreated: 0,
-      postsSkippedExisting: 0,
-      commentsSkippedExisting: 0,
-      analyzed: 0,
-      failed: 0,
-      warnings: ["Apify returned zero items for this keyword."],
+      keyword: term, scrapeRunId: scrapeRun.id, itemsReceived: 0, postsCreated: 0, commentsCreated: 0,
+      postsSkippedExisting: 0, commentsSkippedExisting: 0, analyzed: 0, failed: 0,
+      warnings: ["The source returned zero items for this keyword."],
     };
   }
 
-  // 3) Normalize.
   const { posts, standaloneComments, warnings } = normalizeApifyItems(rawItems);
 
   let postsCreated = 0;
   let postsSkipped = 0;
   let commentsCreated = 0;
   let commentsSkipped = 0;
-
   const createdPostIds: string[] = [];
   const createdCommentIds: string[] = [];
 
   for (const post of posts) {
-    const sourceKey = buildSourceKey({
-      keyword: term,
-      type: "post",
-      id: post.id,
-      url: post.url,
-      text: post.text,
-      author: post.author,
-    });
+    const sourceKey = buildSourceKey({ keyword: term, type: "post", id: post.id, url: post.url, text: post.text, author: post.author });
 
-    const existing = await prisma.post.findUnique({ where: { sourceKey } });
+    const existing = await prisma.post.findUnique({
+      where: { organizationId_sourceKey: { organizationId: orgId, sourceKey } },
+    });
     if (existing) {
       postsSkipped++;
       for (const c of post.comments) {
-        const r = await upsertComment(c, term, keyword.id, scrapeRun.id, existing.id);
+        const r = await upsertComment(orgId, c, term, keyword.id, scrapeRun.id, existing.id);
         if (r.created) { commentsCreated++; createdCommentIds.push(r.id); } else commentsSkipped++;
       }
       continue;
@@ -113,6 +106,7 @@ export async function runScrapeForKeyword(keywordTerm: string): Promise<RunScrap
 
     const created = await prisma.post.create({
       data: {
+        organizationId: orgId,
         sourceKey,
         keywordId: keyword.id,
         scrapeRunId: scrapeRun.id,
@@ -133,27 +127,20 @@ export async function runScrapeForKeyword(keywordTerm: string): Promise<RunScrap
     createdPostIds.push(created.id);
 
     for (const c of post.comments) {
-      const r = await upsertComment(c, term, keyword.id, scrapeRun.id, created.id);
+      const r = await upsertComment(orgId, c, term, keyword.id, scrapeRun.id, created.id);
       if (r.created) { commentsCreated++; createdCommentIds.push(r.id); } else commentsSkipped++;
     }
   }
 
   for (const c of standaloneComments) {
-    const r = await upsertComment(c, term, keyword.id, scrapeRun.id, null);
+    const r = await upsertComment(orgId, c, term, keyword.id, scrapeRun.id, null);
     if (r.created) { commentsCreated++; createdCommentIds.push(r.id); } else commentsSkipped++;
   }
 
-  // 5) AI sentiment analysis — send email on new negative mentions
   let analyzed = 0;
   let failed = 0;
-  for (const id of createdPostIds) {
-    const ok = await analyzePost(id);
-    ok ? analyzed++ : failed++;
-  }
-  for (const id of createdCommentIds) {
-    const ok = await analyzeComment(id);
-    ok ? analyzed++ : failed++;
-  }
+  for (const id of createdPostIds) (await analyzePost(id)) ? analyzed++ : failed++;
+  for (const id of createdCommentIds) (await analyzeComment(id)) ? analyzed++ : failed++;
 
   await prisma.scrapeRun.update({
     where: { id: scrapeRun.id },
@@ -161,44 +148,35 @@ export async function runScrapeForKeyword(keywordTerm: string): Promise<RunScrap
   });
 
   return {
-    keyword: term,
-    scrapeRunId: scrapeRun.id,
-    itemsReceived: rawItems.length,
-    postsCreated,
-    commentsCreated,
-    postsSkippedExisting: postsSkipped,
-    commentsSkippedExisting: commentsSkipped,
-    analyzed,
-    failed,
-    warnings,
+    keyword: term, scrapeRunId: scrapeRun.id, itemsReceived: rawItems.length,
+    postsCreated, commentsCreated, postsSkippedExisting: postsSkipped, commentsSkippedExisting: commentsSkipped,
+    analyzed, failed, warnings,
   };
 }
 
 async function upsertComment(
+  orgId: string,
   c: NormalizedComment,
   keywordTerm: string,
   keywordId: string,
   scrapeRunId: string,
   postId: string | null
 ): Promise<{ created: boolean; id: string }> {
-  const sourceKey = buildSourceKey({
-    keyword: keywordTerm,
-    type: "comment",
-    id: c.id,
-    url: c.url,
-    text: c.text,
-    author: c.author,
-  });
+  const sourceKey = buildSourceKey({ keyword: keywordTerm, type: "comment", id: c.id, url: c.url, text: c.text, author: c.author });
 
-  const existing = await prisma.comment.findUnique({ where: { sourceKey } });
+  const existing = await prisma.comment.findUnique({
+    where: { organizationId_sourceKey: { organizationId: orgId, sourceKey } },
+  });
   if (existing) return { created: false, id: existing.id };
 
   const created = await prisma.comment.create({
     data: {
+      organizationId: orgId,
       sourceKey,
       keywordId,
       scrapeRunId,
       postId,
+      depth: c.depth ?? 0,
       text: c.text ?? null,
       url: c.url ?? null,
       author: c.author ?? null,
@@ -212,53 +190,74 @@ async function upsertComment(
   return { created: true, id: created.id };
 }
 
+function inferPlatform(platform: string | null | undefined, url: string | null | undefined): string {
+  if (platform) return platform;
+  const u = (url || "").toLowerCase();
+  if (u.includes("quora")) return "quora";
+  if (u.includes("teamblind")) return "teamblind";
+  if (u.includes("trustpilot")) return "trustpilot";
+  if (u.includes("linkedin")) return "linkedin";
+  if (u.includes("reddit")) return "reddit";
+  return "web";
+}
+
 /** Emails an alert for a NEGATIVE post; marks alertSent only once delivery succeeds so failures retry next cycle. */
 async function alertNegativePost(id: string): Promise<boolean> {
-  const post = await prisma.post.findUnique({ where: { id }, include: { keyword: true } });
+  const post = await prisma.post.findUnique({
+    where: { id },
+    include: { keyword: true, organization: { select: { brandName: true, alertEmails: true } } },
+  });
   if (!post || post.sentiment !== "NEGATIVE" || post.alertSent || post.isCompetitor) return false;
+  if (post.organization.alertEmails.length === 0) return false;
 
-  const platform = post.platform || (post.url?.includes("quora") ? "quora" : post.url?.includes("teamblind") ? "teamblind" : "reddit");
-  const sent = await sendNegativeMentionAlert({
-    type: "post",
-    keyword: post.keyword.term,
-    platform,
-    text: post.text || "",
-    author: post.author || "Anonymous",
-    url: post.url || "",
-    sentiment: "NEGATIVE",
-    confidence: post.confidence,
-    publishedAt: post.publishedAt || post.createdAt,
-  });
-  if (sent) {
-    await prisma.post.update({ where: { id }, data: { alertSent: true } });
-  }
+  const sent = await sendNegativeMentionAlert(
+    {
+      type: "post",
+      keyword: post.keyword.term,
+      brandName: post.organization.brandName,
+      platform: inferPlatform(post.platform, post.url),
+      text: post.text || "",
+      author: post.author || "Anonymous",
+      url: post.url || "",
+      sentiment: "NEGATIVE",
+      confidence: post.confidence,
+      publishedAt: post.publishedAt || post.createdAt,
+    },
+    post.organization.alertEmails
+  );
+  if (sent) await prisma.post.update({ where: { id }, data: { alertSent: true } });
   return sent;
 }
 
-/** Emails an alert for a NEGATIVE comment; marks alertSent only once delivery succeeds so failures retry next cycle. */
+/** Emails an alert for a NEGATIVE comment; same delivery-then-mark contract as posts. */
 async function alertNegativeComment(id: string): Promise<boolean> {
-  const comment = await prisma.comment.findUnique({ where: { id }, include: { keyword: true, post: true } });
-  if (!comment || comment.sentiment !== "NEGATIVE" || comment.alertSent || comment.isCompetitor) return false;
-
-  const platform = comment.post?.platform || (comment.url?.includes("quora") ? "quora" : comment.url?.includes("teamblind") ? "teamblind" : "reddit");
-  const sent = await sendNegativeMentionAlert({
-    type: "comment",
-    keyword: comment.keyword.term,
-    platform,
-    text: comment.text || "",
-    author: comment.author || "Anonymous",
-    url: comment.url || comment.post?.url || "",
-    sentiment: "NEGATIVE",
-    confidence: comment.confidence,
-    publishedAt: comment.publishedAt || comment.createdAt,
+  const comment = await prisma.comment.findUnique({
+    where: { id },
+    include: { keyword: true, post: true, organization: { select: { brandName: true, alertEmails: true } } },
   });
-  if (sent) {
-    await prisma.comment.update({ where: { id }, data: { alertSent: true } });
-  }
+  if (!comment || comment.sentiment !== "NEGATIVE" || comment.alertSent || comment.isCompetitor) return false;
+  if (comment.organization.alertEmails.length === 0) return false;
+
+  const sent = await sendNegativeMentionAlert(
+    {
+      type: "comment",
+      keyword: comment.keyword.term,
+      brandName: comment.organization.brandName,
+      platform: inferPlatform(comment.post?.platform, comment.url || comment.post?.url),
+      text: comment.text || "",
+      author: comment.author || "Anonymous",
+      url: comment.url || comment.post?.url || "",
+      sentiment: "NEGATIVE",
+      confidence: comment.confidence,
+      publishedAt: comment.publishedAt || comment.createdAt,
+    },
+    comment.organization.alertEmails
+  );
+  if (sent) await prisma.comment.update({ where: { id }, data: { alertSent: true } });
   return sent;
 }
 
-/** Analyzes a single post by id. Returns true if it ended ANALYZED. Sends email alert for negative post. */
+/** Analyzes a single post by id. Returns true if it ended ANALYZED. Sends an alert when negative. */
 export async function analyzePost(id: string): Promise<boolean> {
   const post = await prisma.post.findUnique({ where: { id } });
   if (!post) return false;
@@ -287,10 +286,7 @@ export async function analyzePost(id: string): Promise<boolean> {
   } catch (err) {
     await prisma.post.update({
       where: { id },
-      data: {
-        status: ProcessingStatus.FAILED,
-        processingError: err instanceof Error ? err.message : String(err),
-      },
+      data: { status: ProcessingStatus.FAILED, processingError: err instanceof Error ? err.message : String(err) },
     });
     return false;
   }
@@ -300,7 +296,7 @@ export async function analyzePost(id: string): Promise<boolean> {
   return true;
 }
 
-/** Analyzes a single comment by id. Returns true if it ended ANALYZED. Sends email alert for negative comment. */
+/** Analyzes a single comment by id. Returns true if it ended ANALYZED. Sends an alert when negative. */
 export async function analyzeComment(id: string): Promise<boolean> {
   const comment = await prisma.comment.findUnique({ where: { id } });
   if (!comment) return false;
@@ -329,10 +325,7 @@ export async function analyzeComment(id: string): Promise<boolean> {
   } catch (err) {
     await prisma.comment.update({
       where: { id },
-      data: {
-        status: ProcessingStatus.FAILED,
-        processingError: err instanceof Error ? err.message : String(err),
-      },
+      data: { status: ProcessingStatus.FAILED, processingError: err instanceof Error ? err.message : String(err) },
     });
     return false;
   }
@@ -344,9 +337,9 @@ export async function analyzeComment(id: string): Promise<boolean> {
 // Items stuck in PROCESSING longer than this are assumed orphaned by a crash/restart.
 const STALE_PROCESSING_MS = 30 * 60 * 1000;
 
-function backlogWhere() {
+function backlogWhere(orgId?: string) {
   return {
-    // Competitor items are analyzed too; they're only excluded from email alerts.
+    ...(orgId ? { organizationId: orgId } : {}),
     AND: [{ text: { not: null } }, { text: { not: "" } }],
     OR: [
       { status: ProcessingStatus.RECEIVED },
@@ -356,11 +349,11 @@ function backlogWhere() {
   };
 }
 
-/** Sends Mistral analysis for brand posts/comments that were never analyzed or previously failed. */
-export async function analyzeBacklog(limit = 200): Promise<{ total: number; analyzed: number; failed: number }> {
-  const posts = await prisma.post.findMany({ where: backlogWhere(), select: { id: true }, orderBy: { createdAt: "asc" }, take: limit });
+/** Analyzes posts/comments that were never analyzed or previously failed. Platform-wide unless an org is given. */
+export async function analyzeBacklog(limit = 200, orgId?: string): Promise<{ total: number; analyzed: number; failed: number }> {
+  const posts = await prisma.post.findMany({ where: backlogWhere(orgId), select: { id: true }, orderBy: { createdAt: "asc" }, take: limit });
   const comments = await prisma.comment.findMany({
-    where: backlogWhere(),
+    where: backlogWhere(orgId),
     select: { id: true },
     orderBy: { createdAt: "asc" },
     take: Math.max(0, limit - posts.length),
@@ -373,9 +366,9 @@ export async function analyzeBacklog(limit = 200): Promise<{ total: number; anal
   return { total: posts.length + comments.length, analyzed, failed };
 }
 
-/** Retries alerts for NEGATIVE items whose email never went out (e.g. SMTP was down or unconfigured). */
-export async function sendPendingAlerts(limit = 50): Promise<{ pending: number; sent: number }> {
-  const where = { sentiment: "NEGATIVE", alertSent: false, isCompetitor: false };
+/** Retries alerts for NEGATIVE items whose email never went out. Stops at the first failure. */
+export async function sendPendingAlerts(limit = 50, orgId?: string): Promise<{ pending: number; sent: number }> {
+  const where = { ...(orgId ? { organizationId: orgId } : {}), sentiment: "NEGATIVE", alertSent: false, isCompetitor: false };
   const posts = await prisma.post.findMany({ where, select: { id: true }, orderBy: { createdAt: "asc" }, take: limit });
   const comments = await prisma.comment.findMany({
     where,
@@ -384,8 +377,6 @@ export async function sendPendingAlerts(limit = 50): Promise<{ pending: number; 
     take: Math.max(0, limit - posts.length),
   });
 
-  // Stop at the first delivery failure: it almost always means SMTP itself is broken, so
-  // hammering it with the rest of the queue just burns attempts until the next cycle.
   let sent = 0;
   for (const p of posts) {
     if (!(await alertNegativePost(p.id))) return { pending: posts.length + comments.length, sent };

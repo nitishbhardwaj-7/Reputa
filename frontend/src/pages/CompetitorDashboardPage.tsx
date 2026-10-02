@@ -139,7 +139,7 @@ export function CompetitorDashboardPage() {
       {/* Page Header */}
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <h2>🥊 Competitor Dashboard</h2>
+          <h2>Competitors</h2>
           <p style={{ margin: "4px 0 0", color: "var(--text-dim)", fontSize: 13 }}>
             Monitor competitor brand keywords &amp; mentions across Reddit, Quora, TeamBlind, Trustpilot &amp; Web. Basic scraping without AI sentiment tokens.
           </p>
@@ -395,7 +395,7 @@ export function CompetitorDashboardPage() {
         {feedLoading ? (
           <div className="empty-state">Loading competitor feed…</div>
         ) : items.length === 0 ? (
-          <div className="empty-state">No competitor mentions found yet. Run a competitor card above or click Seed!</div>
+          <div className="empty-state">No competitor mentions yet. Add a competitor above and run a scan.</div>
         ) : (
           <>
             <ItemList items={items} onRetried={fetchFeedData} />

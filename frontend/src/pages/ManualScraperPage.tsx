@@ -146,9 +146,9 @@ export function ManualScraperPage() {
     <div style={{ maxWidth: 960 }}>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <h2>Social Scraper Engine &amp; Keyword Cards</h2>
+          <h2>Keywords</h2>
           <p style={{ margin: "4px 0 0", color: "var(--text-dim)", fontSize: 13 }}>
-            Manage keyword cards for Reddit, Quora, TeamBlind, Trustpilot &amp; LinkedIn. Scrapers run automatically every 1 hour in background.
+            What we listen for, per platform. Every enabled keyword is scanned automatically each hour.
           </p>
         </div>
 
@@ -170,7 +170,7 @@ export function ManualScraperPage() {
           }}
         >
           {runningAll ? <span className="spinner" style={{ width: 14, height: 14 }} /> : "⚡"}
-          {runningAll ? "Scraping All Platforms…" : "Run All Cards Now"}
+          {runningAll ? "Scanning…" : "Scan all now"}
         </button>
       </div>
 
@@ -305,7 +305,7 @@ export function ManualScraperPage() {
                 type="text"
                 value={newKeyword}
                 onChange={(e) => setNewKeyword(e.target.value)}
-                placeholder="e.g. eb1aexperts.com or eb1a"
+                placeholder="e.g. your brand name or acme.com"
                 required
               />
             </div>

@@ -1,4 +1,8 @@
 import type {
+  AuthResponse,
+  AuthUser,
+  Organization,
+  OrgSettingsResponse,
   Overview,
   KeywordSummary,
   ItemsResponse,
@@ -8,7 +12,6 @@ import type {
   SentimentOverTimeRow,
   ScrapeResult,
   SearchResponse,
-  DashboardSettings,
   ManualScrapePayload,
   ManualScrapeResult,
   PlatformKeywordCard,
@@ -18,23 +21,24 @@ import type {
   GoogleMentionsResponse,
   GoogleStatsResponse,
   GoogleScanPayload,
-  GoogleIngestResult,
   GoogleMention,
 } from "./types";
 
 function getApiBaseUrl(): string {
-  let raw = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "http://localhost:4000/api";
+  // Same-origin by default: nginx proxies /api to the backend in production and
+  // Vite proxies it in development. Override only for a split deployment.
+  let raw = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "/api";
   raw = raw.trim().replace(/\/+$/, "");
-  if (!raw.startsWith("http://") && !raw.startsWith("https://")) {
-    raw = `https://${raw}`;
-  }
-  if (!raw.endsWith("/api")) {
-    raw = `${raw}/api`;
-  }
+  if (raw.startsWith("/")) return raw;
+  if (!raw.startsWith("http://") && !raw.startsWith("https://")) raw = `https://${raw}`;
+  if (!raw.endsWith("/api")) raw = `${raw}/api`;
   return raw;
 }
 
-const BASE_URL = getApiBaseUrl();
+export const BASE_URL = getApiBaseUrl();
+
+/** Fired when the server says the session is gone; the auth provider listens and signs out. */
+export const AUTH_EXPIRED_EVENT = "reputa:auth-expired";
 
 export class ApiError extends Error {
   status: number;
@@ -47,15 +51,20 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
+    credentials: "include",
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
+
   if (!res.ok) {
     let message = `Request failed with status ${res.status}`;
     try {
       const body = await res.json();
       if (body?.error) message = body.error;
     } catch {
-      // ignore
+      // non-JSON error body
+    }
+    if (res.status === 401 && !path.startsWith("/auth/login") && !path.startsWith("/auth/signup")) {
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     }
     throw new ApiError(message, res.status);
   }
@@ -72,214 +81,140 @@ function toQuery(filters: Record<string, any> = {}): string {
 }
 
 export const api = {
-  health: () => request<{ ok: boolean; apifyConfigured: boolean; aiConfigured: boolean }>("/health"),
+  // ---------------------------------------------------------------- auth
+  health: () => request<{ ok: boolean; app: string; aiConfigured: boolean; searchConfigured: boolean; smtpConfigured: boolean }>("/health"),
+  me: () => request<AuthResponse>("/auth/me"),
+  login: (data: { email: string; password: string }) =>
+    request<AuthResponse>("/auth/login", { method: "POST", body: JSON.stringify(data) }),
+  signup: (data: { name: string; email: string; password: string; organizationName: string; brandName: string }) =>
+    request<AuthResponse>("/auth/signup", { method: "POST", body: JSON.stringify(data) }),
+  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+  updateProfile: (data: { name: string }) =>
+    request<{ user: AuthUser }>("/auth/me", { method: "PATCH", body: JSON.stringify(data) }),
+  changePassword: (data: { currentPassword: string; newPassword: string }) =>
+    request<{ ok: boolean }>("/auth/change-password", { method: "POST", body: JSON.stringify(data) }),
 
-  getSettings: () => request<DashboardSettings>("/settings"),
+  // ---------------------------------------------------------------- settings
+  getSettings: () => request<OrgSettingsResponse>("/settings"),
+  updateSettings: (data: { name?: string; brandName?: string; alertEmails?: string[] }) =>
+    request<{ ok: boolean; organization: Organization }>("/settings", { method: "PATCH", body: JSON.stringify(data) }),
+  testEmail: () => request<{ ok: boolean; message: string }>("/settings/test-email", { method: "POST" }),
 
-  updateSettings: (data: Partial<DashboardSettings>) =>
-    request<{ ok: boolean; message: string; settings: DashboardSettings }>("/settings", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  testEmail: () =>
-    request<{ ok: boolean; message: string }>("/settings/test-email", {
-      method: "POST",
-    }),
-
-  resetDatabase: () =>
-    request<{
-      ok: boolean;
-      message: string;
-      deletedComments: number;
-      deletedPosts: number;
-      deletedScrapeRuns: number;
-      deletedKeywords: number;
-    }>("/settings/reset-database", { method: "POST" }),
-
-  getOverview: (
-    keyword?: string,
-    platform?: ItemFiltersQuery["platform"],
-    dateFrom?: string,
-    dateTo?: string,
-    source?: "scraper" | "google"
-  ) => request<Overview>(`/overview${toQuery({ keyword, platform, dateFrom, dateTo, source })}`),
-
+  // ---------------------------------------------------------------- overview & feed
+  getOverview: (keyword?: string, platform?: string, dateFrom?: string, dateTo?: string, source?: "scraper" | "google") =>
+    request<Overview>(`/overview${toQuery({ keyword, platform, dateFrom, dateTo, source })}`),
   getKeywords: () => request<{ keywords: KeywordSummary[] }>("/keywords"),
-
   deleteKeyword: (id: string) => request<{ ok: boolean; message: string }>(`/keywords/${id}`, { method: "DELETE" }),
-
   scrapeKeyword: (keyword: string) =>
     request<ScrapeResult>("/keywords/scrape", { method: "POST", body: JSON.stringify({ keyword }) }),
-
   getItems: (filters: ItemFiltersQuery) => request<ItemsResponse>(`/items${toQuery(filters)}`),
-
   getNegative: (filters: ItemFiltersQuery) => request<ItemsResponse>(`/items/negative${toQuery(filters)}`),
-
   getNeutral: (filters: ItemFiltersQuery) => request<ItemsResponse>(`/items/neutral${toQuery(filters)}`),
-
   getPositive: (filters: ItemFiltersQuery) => request<ItemsResponse>(`/items/positive${toQuery(filters)}`),
-
   getFailed: () => request<{ posts: any[]; comments: any[] }>("/items/failed"),
-
   search: (q: string) => request<SearchResponse>(`/search?q=${encodeURIComponent(q)}`),
 
-  getDistribution: (keyword?: string, platform?: ItemFiltersQuery["platform"], dateFrom?: string, dateTo?: string) =>
+  // ---------------------------------------------------------------- charts
+  getDistribution: (keyword?: string, platform?: string, dateFrom?: string, dateTo?: string) =>
     request<Overview>(`/charts/distribution${toQuery({ keyword, platform, dateFrom, dateTo })}`),
-
   getByKeyword: () => request<SentimentByKeywordRow[]>("/charts/by-keyword"),
-
   getByPlatform: (keyword?: string, dateFrom?: string, dateTo?: string) =>
     request<SentimentByPlatformRow[]>(`/charts/by-platform${toQuery({ keyword, dateFrom, dateTo })}`),
-
-  getOverTime: (keyword?: string, platform?: ItemFiltersQuery["platform"], dateFrom?: string, dateTo?: string) =>
+  getOverTime: (keyword?: string, platform?: string, dateFrom?: string, dateTo?: string) =>
     request<SentimentOverTimeRow[]>(`/charts/over-time${toQuery({ keyword, platform, dateFrom, dateTo })}`),
 
+  // ---------------------------------------------------------------- retry / delete
   retryPost: (id: string) => request<{ id: string; analyzed: boolean }>(`/retry/post/${id}`, { method: "POST" }),
   retryComment: (id: string) => request<{ id: string; analyzed: boolean }>(`/retry/comment/${id}`, { method: "POST" }),
-  retryAllFailed: () =>
-    request<{ ok: boolean; total: number; analyzed: number; failed: number }>("/retry/all", { method: "POST" }),
+  retryAllFailed: () => request<{ ok: boolean; total: number; analyzed: number; failed: number }>("/retry/all", { method: "POST" }),
   clearAllFailed: () =>
-    request<{ ok: boolean; deletedPosts: number; deletedComments: number; totalDeleted: number }>("/retry/all", {
-      method: "DELETE",
-    }),
-  deletePost: (id: string) =>
-    request<{ ok: boolean; id: string }>(`/items/post/${id}`, { method: "DELETE" }),
-  deleteComment: (id: string) =>
-    request<{ ok: boolean; id: string }>(`/items/comment/${id}`, { method: "DELETE" }),
-  deleteFailedPost: (id: string) =>
-    request<{ ok: boolean; id: string }>(`/items/post/${id}`, { method: "DELETE" }),
-  deleteFailedComment: (id: string) =>
-    request<{ ok: boolean; id: string }>(`/items/comment/${id}`, { method: "DELETE" }),
+    request<{ ok: boolean; deletedPosts: number; deletedComments: number; totalDeleted: number }>("/retry/all", { method: "DELETE" }),
+  deletePost: (id: string) => request<{ ok: boolean; id: string }>(`/items/post/${id}`, { method: "DELETE" }),
+  deleteComment: (id: string) => request<{ ok: boolean; id: string }>(`/items/comment/${id}`, { method: "DELETE" }),
+  deleteFailedPost: (id: string) => request<{ ok: boolean; id: string }>(`/items/post/${id}`, { method: "DELETE" }),
+  deleteFailedComment: (id: string) => request<{ ok: boolean; id: string }>(`/items/comment/${id}`, { method: "DELETE" }),
 
+  // ---------------------------------------------------------------- keyword cards & scraping
   runManualScrape: (payload: ManualScrapePayload) =>
-    request<ManualScrapeResult>("/manual-scraper/scrape", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-
+    request<ManualScrapeResult>("/manual-scraper/scrape", { method: "POST", body: JSON.stringify(payload) }),
   getPlatformCards: () => request<{ cards: PlatformKeywordCard[] }>("/platform-keywords"),
-
   createPlatformCard: (data: { platform: string; keyword: string; searchUrl?: string }) =>
-    request<{ ok: boolean; card: PlatformKeywordCard }>("/platform-keywords", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  deletePlatformCard: (id: string) =>
-    request<{ ok: boolean; message: string }>(`/platform-keywords/${id}`, { method: "DELETE" }),
-
+    request<{ ok: boolean; card: PlatformKeywordCard }>("/platform-keywords", { method: "POST", body: JSON.stringify(data) }),
+  createPlatformCardsBulk: (data: { keyword: string; platforms: string[] }) =>
+    request<{ ok: boolean; cards: PlatformKeywordCard[] }>("/platform-keywords/bulk", { method: "POST", body: JSON.stringify(data) }),
+  deletePlatformCard: (id: string) => request<{ ok: boolean; message: string }>(`/platform-keywords/${id}`, { method: "DELETE" }),
   togglePlatformCard: (id: string) =>
     request<{ ok: boolean; card: PlatformKeywordCard }>(`/platform-keywords/${id}/toggle`, { method: "PATCH" }),
-
-  runPlatformCardNow: (id: string, payload?: { platform?: string; keyword?: string; searchUrl?: string }) =>
-    request<{ ok: boolean; result: ManualScrapeResult }>(`/platform-keywords/run-card/${id}`, {
-      method: "POST",
-      body: JSON.stringify(payload ?? {}),
-    }),
-
+  runPlatformCardNow: (id: string, _payload?: unknown) =>
+    request<{ ok: boolean; result: ManualScrapeResult }>(`/platform-keywords/run-card/${id}`, { method: "POST", body: "{}" }),
   runAllPlatformCardsNow: () =>
     request<{ ok: boolean; message: string; newItems?: number }>("/platform-keywords/run-all", { method: "POST" }),
-
   getCronStatus: () => request<CronStatus>("/platform-keywords/cron-status"),
 
-  // Google Scraper APIs
+  // ---------------------------------------------------------------- search monitor (Google/Bing/YouTube/News)
   getGoogleMentions: (platform = "All", q = "") =>
     request<GoogleMentionsResponse>(`/google-scraper/mentions${toQuery({ platform, q })}`),
-
   getGoogleStats: () => request<GoogleStatsResponse>("/google-scraper/stats"),
-
   runGoogleScan: (payload: GoogleScanPayload) =>
-    request<{ ok: boolean; message: string }>("/google-scraper/scan", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-
-  ingestGoogleMentions: (payload: { items: any[]; keyword?: string }) =>
-    request<GoogleIngestResult>("/google-scraper/ingest", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-
+    request<{ ok: boolean; message: string }>("/google-scraper/scan", { method: "POST", body: JSON.stringify(payload) }),
   getGoogleStreamUrl: () => `${BASE_URL}/google-scraper/stream`,
 
-  // Competitor Analysis APIs
+  // ---------------------------------------------------------------- competitors
   getCompetitorCards: () => request<{ cards: CompetitorCard[] }>("/competitor-cards/cards"),
-
   createCompetitorCard: (data: { platform: string; keyword: string; searchUrl?: string }) =>
-    request<{ ok: boolean; card: CompetitorCard }>("/competitor-cards/cards", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
+    request<{ ok: boolean; card: CompetitorCard }>("/competitor-cards/cards", { method: "POST", body: JSON.stringify(data) }),
   deleteCompetitorCard: (id: string) =>
     request<{ ok: boolean; message: string }>(`/competitor-cards/cards/${id}`, { method: "DELETE" }),
-
   toggleCompetitorCard: (id: string) =>
     request<{ ok: boolean; card: CompetitorCard }>(`/competitor-cards/cards/${id}/toggle`, { method: "PATCH" }),
-
   runCompetitorCardNow: (id: string) =>
     request<{ ok: boolean; result: any }>(`/competitor-cards/cards/run-card/${id}`, { method: "POST" }),
-
   runAllCompetitorCardsNow: () =>
     request<{ ok: boolean; message: string; newItems?: number }>("/competitor-cards/cards/run-all", { method: "POST" }),
-
   getCompetitorItems: (filters: { platform?: string; search?: string; page?: number; pageSize?: number }) =>
     request<ItemsResponse>(`/competitors/items${toQuery(filters)}`),
-
   getCompetitorOverview: () => request<CompetitorOverview>("/competitors/overview"),
 
-  seedCompetitors: () => request<{ ok: boolean; seededCards: number; taggedPosts: number; taggedComments: number; message: string }>("/competitors/seed", { method: "POST" }),
-
+  // ---------------------------------------------------------------- exports (cookie auth works for navigations too)
   exportToExcel: (filters: { scope?: string; platform?: string; keyword?: string; dateFrom?: string; dateTo?: string; sentiment?: string; search?: string; author?: string } = {}) => {
-    const url = `${BASE_URL}/export/excel${toQuery(filters)}`;
-    window.open(url, "_blank");
+    window.open(`${BASE_URL}/export/excel${toQuery(filters)}`, "_blank");
   },
 
   exportGoogleToExcel: async (data: {
     items?: GoogleMention[];
-    filters?: {
-      platform?: string;
-      dateRangeLabel?: string;
-      dateFrom?: string;
-      dateTo?: string;
-      query?: string;
-    };
+    filters?: { platform?: string; dateRangeLabel?: string; dateFrom?: string; dateTo?: string; query?: string };
   } = {}) => {
     if (data.items && data.items.length > 0) {
       const res = await fetch(`${BASE_URL}/google-scraper/export-excel`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!res.ok) {
-        throw new Error("Failed to export Google Excel report.");
-      }
+      if (!res.ok) throw new Error("Failed to export the report.");
       const blob = await res.blob();
       const safePlat = (data.filters?.platform || "All").replace(/[^a-zA-Z0-9_-]/g, "_");
       const dateLabel = (data.filters?.dateRangeLabel || "AllTime").replace(/[^a-zA-Z0-9_-]/g, "_");
-      const timestamp = new Date().toISOString().slice(0, 10);
-      const filename = `Google_Mentions_${safePlat}_${dateLabel}_${timestamp}.xlsx`;
-
-      const downloadUrl = window.URL.createObjectURL(blob);
+      const filename = `Search_Mentions_${safePlat}_${dateLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = downloadUrl;
+      a.href = url;
       a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      window.URL.revokeObjectURL(downloadUrl);
+      window.URL.revokeObjectURL(url);
     } else {
-      const queryParams: Record<string, string | undefined> = {
-        platform: data.filters?.platform,
-        q: data.filters?.query,
-        dateRangeLabel: data.filters?.dateRangeLabel,
-        dateFrom: data.filters?.dateFrom,
-        dateTo: data.filters?.dateTo,
-      };
-      const url = `${BASE_URL}/google-scraper/export-excel${toQuery(queryParams)}`;
-      window.open(url, "_blank");
+      window.open(
+        `${BASE_URL}/google-scraper/export-excel${toQuery({
+          platform: data.filters?.platform,
+          q: data.filters?.query,
+          dateRangeLabel: data.filters?.dateRangeLabel,
+          dateFrom: data.filters?.dateFrom,
+          dateTo: data.filters?.dateTo,
+        })}`,
+        "_blank"
+      );
     }
   },
 };
-

@@ -1,7 +1,12 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import cookieParser from "cookie-parser";
+import rateLimit from "express-rate-limit";
 import { execSync } from "child_process";
-import { env, refreshEnvFromDisk } from "./config/env";
+import { env, refreshEnvFromDisk, platformStatus } from "./config/env";
+import { requireAuth } from "./middleware/auth";
+import { authRouter } from "./routes/auth";
 import { keywordsRouter } from "./routes/keywords";
 import { itemsRouter } from "./routes/items";
 import { chartsRouter } from "./routes/charts";
@@ -10,70 +15,85 @@ import { settingsRouter } from "./routes/settings";
 import { manualScraperRouter } from "./routes/manualScraper";
 import { platformKeywordsRouter } from "./routes/platformKeywords";
 import { googleScraperRouter } from "./routes/googleScraper";
-import { competitorsRouter, syncCompetitorFlags } from "./routes/competitors";
+import { competitorsRouter } from "./routes/competitors";
 import { exportRouter } from "./routes/export";
 import { startHourlyScraperCron } from "./services/cronScheduler";
-import { purgeSeedKeyword } from "./services/queryService";
 
 const app = express();
 
-// Auto sync Prisma schema on server startup, purge seed keyword & sync competitor flags
+// Keep the schema in step with the code on every boot. Swap for `prisma migrate deploy`
+// once the schema stabilises and tenants hold data you can't afford to reshape.
 try {
-  console.log("Ensuring Prisma database schema is in sync...");
+  console.log("Syncing database schema...");
   execSync("npx prisma db push --skip-generate", { stdio: "inherit" });
-  refreshEnvFromDisk().catch(() => {});
-  purgeSeedKeyword().catch(() => {});
-  syncCompetitorFlags().catch(() => {});
 } catch (err: any) {
-  console.warn("Notice: Prisma DB sync notice:", err?.message || err);
+  console.warn("Schema sync notice:", err?.message || err);
 }
+refreshEnvFromDisk().catch(() => {});
 
-app.use(cors({
-  origin: true,
-  credentials: true,
-}));
-app.use(express.json({ limit: "10mb" }));
+// Behind nginx in production; needed for correct client IPs in rate limiting.
+app.set("trust proxy", 1);
 
-app.get("/", (_req, res) => {
-  res.json({ ok: true, message: "ORM Dashboard API Server is Live!" });
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.use(
+  cors({
+    origin(origin, cb) {
+      // Same-origin (no Origin header) and the configured frontends are allowed.
+      if (!origin || env.APP_ORIGINS.includes(origin)) return cb(null, true);
+      return cb(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
+app.use(cookieParser());
+app.use(express.json({ limit: "2mb" }));
+
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 60 * 1000,
+    limit: 300,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "Too many requests. Please slow down." },
+  })
+);
+
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true, app: env.APP_NAME, ...platformStatus() });
 });
 
-app.get(["/health", "/api/health"], (_req, res) => {
-  res.json({
-    ok: true,
-    apifyConfigured: Boolean(env.APIFY_API_URL && env.APIFY_API_KEY),
-    aiConfigured: Boolean(env.AI_API_URL && env.AI_API_KEY),
-  });
-});
+// Public
+app.use("/api/auth", authRouter);
 
-// Dual mount /api and root routes for 100% path compatibility
-app.use(["/api/export", "/export"], exportRouter);
-app.use(["/api/settings", "/settings"], settingsRouter);
-app.use(["/api/google-scraper", "/google-scraper"], googleScraperRouter);
-app.use(["/api/competitor-cards", "/competitor-cards", "/api/competitors", "/competitors"], competitorsRouter);
-app.use(["/api/manual-scraper", "/manual-scraper"], manualScraperRouter);
-app.use(["/api/platform-keywords", "/platform-keywords"], platformKeywordsRouter);
-app.use(["/api/keywords", "/keywords"], keywordsRouter);
-app.use(["/api/retry", "/retry"], retryRouter);
-app.use(["/api/charts", "/charts"], chartsRouter);
-app.use(["/api", "/"], itemsRouter);
+// Everything below requires a signed-in user and is scoped to their organization.
+app.use("/api", requireAuth);
+app.use("/api/settings", settingsRouter);
+app.use("/api/export", exportRouter);
+app.use("/api/google-scraper", googleScraperRouter);
+app.use(["/api/competitor-cards", "/api/competitors"], competitorsRouter);
+app.use("/api/manual-scraper", manualScraperRouter);
+app.use("/api/platform-keywords", platformKeywordsRouter);
+app.use("/api/keywords", keywordsRouter);
+app.use("/api/retry", retryRouter);
+app.use("/api/charts", chartsRouter);
+app.use("/api", itemsRouter);
 
-// Central error handler — return actual message for clean diagnostics
+app.use("/api", (_req, res) => res.status(404).json({ error: "Not found." }));
+
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err?.message === "Not allowed by CORS") return res.status(403).json({ error: "Origin not allowed." });
   console.error("SERVER ERROR:", err);
-  const msg = err?.message || (typeof err === "string" ? err : "Unexpected server error.");
+  // Never leak stack traces or internal messages to tenants in production.
+  const msg = env.IS_PRODUCTION ? "Something went wrong on our side." : err?.message || "Unexpected server error.";
   res.status(500).json({ error: msg });
 });
 
 app.listen(env.PORT, () => {
-  console.log(`ORM Dashboard backend listening on http://localhost:${env.PORT}`);
-  if (!env.APIFY_API_URL || !env.APIFY_API_KEY) {
-    console.warn("⚠ Apify is not configured yet — set APIFY_API_URL and APIFY_API_KEY in backend/.env");
-  }
-  if (!env.AI_API_KEY) {
-    console.warn("⚠ Mistral AI sentiment engine is not configured yet — set MISTRAL_API_KEY in Settings or backend/.env");
-  }
-
-  // Start background hourly cron for all platform keyword cards
+  console.log(`${env.APP_NAME} API listening on http://localhost:${env.PORT} (${env.NODE_ENV})`);
+  const status = platformStatus();
+  if (!status.aiConfigured) console.warn("⚠ AI sentiment engine not configured (AI_API_KEY).");
+  if (!status.searchConfigured) console.warn("⚠ Search scanning not configured (SERPER_API_KEY).");
+  if (!status.smtpConfigured) console.warn("⚠ Email alerts not configured (SMTP_USER / SMTP_PASS).");
   startHourlyScraperCron();
 });

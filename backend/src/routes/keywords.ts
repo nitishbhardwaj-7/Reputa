@@ -4,51 +4,44 @@ import { getKeywords } from "../services/queryService";
 import { ApifyError } from "../services/apifyService";
 import { ConfigError } from "../config/env";
 import { prisma } from "../lib/prisma";
+import { orgOf } from "../middleware/auth";
 
 export const keywordsRouter = Router();
 
-// GET /api/keywords — list all keywords searched so far, with counts.
-keywordsRouter.get("/", async (_req, res) => {
-  const keywords = await getKeywords();
-  res.json({ keywords });
+// GET / — this tenant's keywords with counts
+keywordsRouter.get("/", async (req, res, next) => {
+  try {
+    res.json({ keywords: await getKeywords(orgOf(req)) });
+  } catch (err) {
+    next(err);
+  }
 });
 
-// POST /api/keywords/scrape { keyword: string }
-// Triggers the full pipeline: Apify -> normalize -> store -> AI sentiment -> store.
+// POST /scrape { keyword } — Apify-backed pipeline (only when the platform has Apify configured)
 keywordsRouter.post("/scrape", async (req, res) => {
   const keyword = String(req.body?.keyword ?? "").trim();
-  if (!keyword) {
-    return res.status(400).json({ error: "Request body must include a non-empty 'keyword' string." });
-  }
+  if (!keyword) return res.status(400).json({ error: "A keyword is required." });
 
   try {
-    const result = await runScrapeForKeyword(keyword);
-    res.json(result);
+    res.json(await runScrapeForKeyword(orgOf(req), keyword));
   } catch (err) {
-    if (err instanceof ConfigError) {
-      return res.status(503).json({ error: err.message });
-    }
-    if (err instanceof PipelineError) {
-      return res.status(502).json({ error: err.message, scrapeRunId: err.scrapeRunId });
-    }
-    if (err instanceof ApifyError) {
-      return res.status(err.status ?? 502).json({ error: err.message });
-    }
+    if (err instanceof ConfigError) return res.status(503).json({ error: err.message });
+    if (err instanceof PipelineError) return res.status(502).json({ error: err.message, scrapeRunId: err.scrapeRunId });
+    if (err instanceof ApifyError) return res.status(err.status ?? 502).json({ error: err.message });
     console.error(err);
-    res.status(500).json({ error: "Unexpected server error while running the scrape pipeline." });
+    res.status(500).json({ error: "Unexpected error while running the scrape pipeline." });
   }
 });
 
-// DELETE /api/keywords/:id — delete a keyword and its associated items
+// DELETE /:id — removes a keyword and everything found under it
 keywordsRouter.delete("/:id", async (req, res, next) => {
   try {
-    const { id } = req.params;
-    await prisma.comment.deleteMany({ where: { keywordId: id } });
-    await prisma.post.deleteMany({ where: { keywordId: id } });
-    await prisma.scrapeRun.deleteMany({ where: { keywordId: id } });
-    await prisma.keyword.delete({ where: { id } });
-
-    res.json({ ok: true, message: "Keyword deleted successfully." });
+    const orgId = orgOf(req);
+    const kw = await prisma.keyword.findFirst({ where: { id: req.params.id, organizationId: orgId }, select: { id: true } });
+    if (!kw) return res.status(404).json({ error: "Keyword not found." });
+    // Cascades remove posts, comments and runs.
+    await prisma.keyword.delete({ where: { id: kw.id } });
+    res.json({ ok: true, message: "Keyword and its mentions deleted." });
   } catch (err) {
     next(err);
   }

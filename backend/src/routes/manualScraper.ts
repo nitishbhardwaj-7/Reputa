@@ -3,23 +3,30 @@ import { prisma } from "../lib/prisma";
 import { runPythonSocialScraper } from "../services/pythonScraperService";
 import { normalizeApifyItems } from "../services/dataNormalizer";
 import { buildSourceKey } from "../lib/hash";
+import { boundedRaw } from "../lib/raw";
 import { ProcessingStatus } from "../types/status";
-import { analyzePost, analyzeComment } from "../services/pipelineService";
+import { analyzePost, analyzeComment, upsertKeyword } from "../services/pipelineService";
+import { orgOf } from "../middleware/auth";
+import { SCRAPER_PLATFORMS } from "../services/queryService";
 
 export const manualScraperRouter = Router();
 
-export async function runManualScrapePipeline(term: string, platformStr: string, rawItems: any[]) {
-  const dbKeyword = await prisma.keyword.upsert({
-    where: { term },
-    create: { term },
-    update: {},
-  });
+export type ScraperPlatform = (typeof SCRAPER_PLATFORMS)[number];
+
+export function isScraperPlatform(p: unknown): p is ScraperPlatform {
+  return typeof p === "string" && (SCRAPER_PLATFORMS as readonly string[]).includes(p);
+}
+
+/** Stores a scraper payload for one tenant, dedupes it, and analyzes whatever is new. */
+export async function runManualScrapePipeline(orgId: string, term: string, platformStr: string, rawItems: any[]) {
+  const dbKeyword = await upsertKeyword(orgId, term);
 
   const scrapeRun = await prisma.scrapeRun.create({
     data: {
+      organizationId: orgId,
       keywordId: dbKeyword.id,
       status: ProcessingStatus.RECEIVED,
-      rawResponse: JSON.stringify(rawItems),
+      rawResponse: boundedRaw(rawItems),
       itemCount: rawItems.length,
     },
   });
@@ -30,22 +37,12 @@ export async function runManualScrapePipeline(term: string, platformStr: string,
       data: { status: ProcessingStatus.ANALYZED, completedAt: new Date() },
     });
     return {
-      ok: true,
-      keyword: term,
-      itemsReceived: 0,
-      postsCreated: 0,
-      commentsCreated: 0,
-      postsSkippedExisting: 0,
-      commentsSkippedExisting: 0,
-      analyzed: 0,
-      failed: 0,
-      posts: [],
-      comments: [],
-      message: "Python scraper returned zero results for this query.",
+      ok: true, keyword: term, itemsReceived: 0, postsCreated: 0, commentsCreated: 0,
+      postsSkippedExisting: 0, commentsSkippedExisting: 0, analyzed: 0, failed: 0,
+      posts: [], comments: [], message: "The scraper returned zero results for this query.",
     };
   }
 
-  // 2) Normalize items
   const { posts, standaloneComments, warnings } = normalizeApifyItems(rawItems);
 
   let postsCreated = 0;
@@ -58,20 +55,13 @@ export async function runManualScrapePipeline(term: string, platformStr: string,
   // Scrapers emit depth-first, so a parent is always seen before its children.
   const commentIdMap = new Map<string, string>();
 
-  // 3) Store Posts & Comments with strict deduplication
   for (const post of posts) {
-    const sourceKey = buildSourceKey({
-      keyword: term,
-      type: "post",
-      id: post.id,
-      url: post.url,
-      text: post.text,
-      author: post.author,
-    });
+    const sourceKey = buildSourceKey({ keyword: term, type: "post", id: post.id, url: post.url, text: post.text, author: post.author });
 
     let postId = "";
     const existing = await prisma.post.findFirst({
       where: {
+        organizationId: orgId,
         OR: [
           { sourceKey },
           { AND: [{ keywordId: dbKeyword.id }, { url: post.url, NOT: { url: null } }] },
@@ -86,10 +76,11 @@ export async function runManualScrapePipeline(term: string, platformStr: string,
     } else {
       const created = await prisma.post.create({
         data: {
+          organizationId: orgId,
           sourceKey,
           keywordId: dbKeyword.id,
           scrapeRunId: scrapeRun.id,
-          platform: post.platform || platformStr || "reddit",
+          platform: post.platform || platformStr,
           text: post.text ?? null,
           url: post.url ?? null,
           author: post.author ?? null,
@@ -108,17 +99,11 @@ export async function runManualScrapePipeline(term: string, platformStr: string,
     }
 
     for (const c of post.comments) {
-      const cSourceKey = buildSourceKey({
-        keyword: term,
-        type: "comment",
-        id: c.id,
-        url: c.url,
-        text: c.text,
-        author: c.author,
-      });
+      const cSourceKey = buildSourceKey({ keyword: term, type: "comment", id: c.id, url: c.url, text: c.text, author: c.author });
 
       const existingComment = await prisma.comment.findFirst({
         where: {
+          organizationId: orgId,
           OR: [
             { sourceKey: cSourceKey },
             { AND: [{ keywordId: dbKeyword.id }, { text: c.text, NOT: { text: null } }] },
@@ -132,6 +117,7 @@ export async function runManualScrapePipeline(term: string, platformStr: string,
       } else {
         const createdComment = await prisma.comment.create({
           data: {
+            organizationId: orgId,
             sourceKey: cSourceKey,
             keywordId: dbKeyword.id,
             scrapeRunId: scrapeRun.id,
@@ -156,17 +142,11 @@ export async function runManualScrapePipeline(term: string, platformStr: string,
   }
 
   for (const c of standaloneComments) {
-    const cSourceKey = buildSourceKey({
-      keyword: term,
-      type: "comment",
-      id: c.id,
-      url: c.url,
-      text: c.text,
-      author: c.author,
-    });
+    const cSourceKey = buildSourceKey({ keyword: term, type: "comment", id: c.id, url: c.url, text: c.text, author: c.author });
 
     const existingComment = await prisma.comment.findFirst({
       where: {
+        organizationId: orgId,
         OR: [
           { sourceKey: cSourceKey },
           { AND: [{ keywordId: dbKeyword.id }, { text: c.text, NOT: { text: null } }] },
@@ -179,6 +159,7 @@ export async function runManualScrapePipeline(term: string, platformStr: string,
     } else {
       const createdComment = await prisma.comment.create({
         data: {
+          organizationId: orgId,
           sourceKey: cSourceKey,
           keywordId: dbKeyword.id,
           scrapeRunId: scrapeRun.id,
@@ -198,69 +179,48 @@ export async function runManualScrapePipeline(term: string, platformStr: string,
     }
   }
 
-  // 4) Analyze Sentiment ONLY on newly created items
   let analyzed = 0;
   let failed = 0;
-
-  for (const id of createdPostIds) {
-    const ok = await analyzePost(id);
-    ok ? analyzed++ : failed++;
-  }
-  for (const id of createdCommentIds) {
-    const ok = await analyzeComment(id);
-    ok ? analyzed++ : failed++;
-  }
+  for (const id of createdPostIds) (await analyzePost(id)) ? analyzed++ : failed++;
+  for (const id of createdCommentIds) (await analyzeComment(id)) ? analyzed++ : failed++;
 
   await prisma.scrapeRun.update({
     where: { id: scrapeRun.id },
     data: { status: ProcessingStatus.ANALYZED, completedAt: new Date() },
   });
 
-  // 5) Fetch latest items for UI feedback
-  const dbPosts = await prisma.post.findMany({
-    where: { keywordId: dbKeyword.id },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
-  const dbComments = await prisma.comment.findMany({
-    where: { keywordId: dbKeyword.id },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+  const [dbPosts, dbComments] = await Promise.all([
+    prisma.post.findMany({ where: { organizationId: orgId, keywordId: dbKeyword.id }, orderBy: { createdAt: "desc" }, take: 50 }),
+    prisma.comment.findMany({ where: { organizationId: orgId, keywordId: dbKeyword.id }, orderBy: { createdAt: "desc" }, take: 50 }),
+  ]);
 
   return {
-    ok: true,
-    keyword: term,
-    scrapeRunId: scrapeRun.id,
-    itemsReceived: rawItems.length,
-    postsCreated,
-    commentsCreated,
-    postsSkippedExisting,
-    commentsSkippedExisting,
-    analyzed,
-    failed,
-    warnings,
-    posts: dbPosts,
-    comments: dbComments,
+    ok: true, keyword: term, scrapeRunId: scrapeRun.id, itemsReceived: rawItems.length,
+    postsCreated, commentsCreated, postsSkippedExisting, commentsSkippedExisting, analyzed, failed, warnings,
+    posts: dbPosts, comments: dbComments,
   };
 }
 
+// POST /api/manual-scraper/scrape { keyword, platform, url?, limit? }
 manualScraperRouter.post("/scrape", async (req, res, next) => {
   try {
+    const orgId = orgOf(req);
     const { keyword, url, limit, platform } = req.body ?? {};
-    const term = (keyword || "eb1a").trim();
+    const term = typeof keyword === "string" ? keyword.trim() : "";
+    if (!term) return res.status(400).json({ error: "A keyword is required." });
+    if (!isScraperPlatform(platform)) {
+      return res.status(400).json({ error: `Platform must be one of: ${SCRAPER_PLATFORMS.join(", ")}.` });
+    }
 
-    // 1) Execute Python scraper
     const rawItems = await runPythonSocialScraper({
       keyword: term,
       url: typeof url === "string" ? url : undefined,
-      limit: typeof limit === "number" ? limit : 100,
-      platform: platform ?? "reddit",
+      limit: typeof limit === "number" ? Math.min(Math.max(limit, 1), 200) : 100,
+      platform,
     });
 
-    const pipelineResult = await runManualScrapePipeline(term, platform ?? "reddit", rawItems);
-    res.json(pipelineResult);
-  } catch (err: any) {
+    res.json(await runManualScrapePipeline(orgId, term, platform, rawItems));
+  } catch (err) {
     next(err);
   }
 });

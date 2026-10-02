@@ -93,7 +93,7 @@ export function OverviewPage() {
     <div>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <h2>Overview Dashboard</h2>
+          <h2>Overview</h2>
           <p style={{ margin: "4px 0 0", color: "var(--text-dim)", fontSize: 13 }}>
             Real-time reputation metrics, sentiment distribution, and platform-wise breakdown.
           </p>

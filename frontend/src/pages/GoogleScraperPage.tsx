@@ -84,7 +84,7 @@ export function getItemAgeTag(item: GoogleMention): "NEW" | "OLD" | null {
 
 export function GoogleScraperPage() {
   const [mentions, setMentions] = useState<GoogleMention[]>([]);
-  const [brand, setBrand] = useState("EB1A Experts");
+  const [brand, setBrand] = useState("");
 
   const [platform, setPlatform] = useState("All");
   const [ageFilter, setAgeFilter] = useState<"ALL" | "NEW" | "OLD">("ALL");
@@ -149,7 +149,7 @@ export function GoogleScraperPage() {
   // SSE Stream Connection
   useEffect(() => {
     const streamUrl = api.getGoogleStreamUrl();
-    const es = new EventSource(streamUrl);
+    const es = new EventSource(streamUrl, { withCredentials: true });
 
     es.onopen = () => setSseConnected(true);
     es.onerror = () => setSseConnected(false);
@@ -408,7 +408,7 @@ export function GoogleScraperPage() {
       <header className="page-header" style={{ marginBottom: 20 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <h2 style={{ margin: 0 }}>Google Brand Monitor</h2>
+            <h2 style={{ margin: 0 }}>Search Monitor</h2>
             <span
               style={{
                 display: "inline-flex",
@@ -436,7 +436,7 @@ export function GoogleScraperPage() {
             </span>
           </div>
           <p className="page-subtitle">
-            Search &amp; track brand mentions from Google Web &amp; Google News using Serper.dev API (`SERPER_API_KEY`). Every scrape is automatically ingested and sentiment-analyzed by Mistral AI. Background cron runs automatically every 1 hour.
+            Mentions of your brand across Google, Bing, YouTube and News. Every result is analyzed for sentiment and included in your totals. Scans run automatically every hour.
           </p>
         </div>
         <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
