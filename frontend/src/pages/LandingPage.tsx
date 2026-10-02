@@ -300,7 +300,7 @@ export function LandingPage() {
             <p className="lede">Get in-depth reports, track sentiment over time, and identify trends to make better decisions. Export to PDF or Excel in one click.</p>
           </div>
         </div>
-        <div className="frame"><Scaled width={1040}><ReportMock /></Scaled></div>
+        <div className="frame"><div className="scroller"><Scaled width={1040}><ReportMock /></Scaled></div></div>
       </section>
 
       {/* ------------------------------------------------ testimonials */}

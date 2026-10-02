@@ -5,7 +5,8 @@ export function Lines({ lines, className, as: Tag = "h2", ...rest }: { lines: Re
   return (
     <Tag className={className} {...rest}>
       {lines.map((l, i) => (
-        <span className="ln" key={i}><span className="ln-in">{l}</span></span>
+        // The trailing space is invisible while lines are blocks and keeps words apart when they flow inline on phones.
+        <span className="ln" key={i}><span className="ln-in">{l}</span>{" "}</span>
       ))}
     </Tag>
   );
