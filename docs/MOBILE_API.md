@@ -75,5 +75,24 @@ is `expired` or `canceled`, reads still work and scans answer 402.
 | Plan | `GET /billing` — plan, state, limits and usage (read-only in the app) |
 | Workspace | `GET /settings`, `PATCH /settings` |
 
-Push notifications (device registration and negative-mention pushes) are not built yet; they
-are the next backend step once the app can sign in.
+| Mention | `GET /items/post/:id` or `GET /items/comment/:id` — one mention, same shape as the lists |
+
+## Push notifications
+
+The app registers its Expo push token after sign-in and at every launch, and removes it on sign-out:
+
+| Request | Body |
+|---|---|
+| `POST /devices` | `{ "token": "ExponentPushToken[…]", "platform": "android" \| "ios" }` |
+| `DELETE /devices` | `{ "token": "ExponentPushToken[…]" }` |
+
+Every new negative mention (not a competitor's) is pushed once to all devices in the workspace,
+independently of the email alert:
+
+```json
+{ "title": "Negative mention on Reddit", "body": "<first 160 characters>", "channelId": "alerts", "data": { "url": "/mention/comment/<id>" } }
+```
+
+`data.url` is an in-app path; the app opens it and loads the mention with `GET /items/:kind/:id`.
+Mentions older than 24 hours are never pushed, so registering a phone does not replay history.
+Tokens Expo reports as `DeviceNotRegistered` are deleted automatically.

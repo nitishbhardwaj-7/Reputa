@@ -1,3 +1,4 @@
+import { negativeMentionPush, sendPushToOrganization } from "./pushService";
 import { prisma } from "../lib/prisma";
 import { ProcessingStatus } from "../types/status";
 import { buildSourceKey } from "../lib/hash";
@@ -202,12 +203,35 @@ function inferPlatform(platform: string | null | undefined, url: string | null |
 }
 
 /** Emails an alert for a NEGATIVE post; marks alertSent only once delivery succeeds so failures retry next cycle. */
+/** Mentions older than this are marked as handled without a push, so a newly registered phone is not flooded with history. */
+const PUSH_FRESH_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Pushes one negative mention to the workspace's phones, exactly once. Independent of the
+ * email alert: it goes out even when SMTP is down or no alert recipients are set.
+ */
+async function pushOnce(kind: "post" | "comment", id: string, orgId: string, createdAt: Date, platform: string, text: string): Promise<void> {
+  try {
+    if (Date.now() - createdAt.getTime() <= PUSH_FRESH_MS) {
+      await sendPushToOrganization(orgId, negativeMentionPush(kind, id, platform, text));
+    }
+    if (kind === "post") await prisma.post.update({ where: { id }, data: { pushSent: true } });
+    else await prisma.comment.update({ where: { id }, data: { pushSent: true } });
+  } catch (err: any) {
+    console.error("Push alert failed:", err?.message || err);
+  }
+}
+
 async function alertNegativePost(id: string): Promise<boolean> {
   const post = await prisma.post.findUnique({
     where: { id },
     include: { keyword: true, organization: { select: { brandName: true, alertEmails: true } } },
   });
-  if (!post || post.sentiment !== "NEGATIVE" || post.alertSent || post.isCompetitor) return false;
+  if (!post || post.sentiment !== "NEGATIVE" || post.isCompetitor) return false;
+  if (!post.pushSent) {
+    await pushOnce("post", post.id, post.organizationId, post.createdAt, inferPlatform(post.platform, post.url), post.text || "");
+  }
+  if (post.alertSent) return false;
   if (post.organization.alertEmails.length === 0) return false;
 
   const sent = await sendNegativeMentionAlert(
@@ -235,7 +259,11 @@ async function alertNegativeComment(id: string): Promise<boolean> {
     where: { id },
     include: { keyword: true, post: true, organization: { select: { brandName: true, alertEmails: true } } },
   });
-  if (!comment || comment.sentiment !== "NEGATIVE" || comment.alertSent || comment.isCompetitor) return false;
+  if (!comment || comment.sentiment !== "NEGATIVE" || comment.isCompetitor) return false;
+  if (!comment.pushSent) {
+    await pushOnce("comment", comment.id, comment.organizationId, comment.createdAt, inferPlatform(comment.post?.platform, comment.url || comment.post?.url), comment.text || "");
+  }
+  if (comment.alertSent) return false;
   if (comment.organization.alertEmails.length === 0) return false;
 
   const sent = await sendNegativeMentionAlert(

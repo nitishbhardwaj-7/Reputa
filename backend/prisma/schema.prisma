@@ -39,6 +39,7 @@ model Organization {
   updatedAt   DateTime @updatedAt
 
   users            User[]
+  pushDevices      PushDevice[]
   keywords         Keyword[]
   platformKeywords PlatformKeyword[]
   competitorCards  CompetitorCard[]
@@ -64,6 +65,7 @@ model User {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt      DateTime     @default(now())
   lastLoginAt    DateTime?
+  pushDevices    PushDevice[]
 
   @@index([organizationId])
   @@index([googleId])
@@ -186,6 +188,8 @@ model Post {
   isCompetitor    Boolean   @default(false)
   // Set when a user marks the mention handled; clears it from open alerts.
   resolvedAt      DateTime?
+  // The mobile push for this negative mention has been sent (or deliberately skipped).
+  pushSent     Boolean   @default(false)
 
   // "scraper" (Playwright platform scrapers) or "google" (SERP via Serper). Both land
   // in this table so a tenant's total is counted once, in one place.
@@ -244,6 +248,8 @@ model Comment {
   alertSent       Boolean   @default(false)
   isCompetitor    Boolean   @default(false)
   resolvedAt      DateTime?
+  // The mobile push for this negative mention has been sent (or deliberately skipped).
+  pushSent     Boolean   @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -267,4 +273,20 @@ model SystemSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+/// A phone that receives negative-mention alerts. `token` is the Expo push token for one app install.
+model PushDevice {
+  id             String       @id @default(cuid())
+  token          String       @unique
+  platform       String       // "ios" | "android" | "unknown"
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  lastSeenAt     DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([userId])
 }

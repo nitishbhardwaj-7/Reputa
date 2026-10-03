@@ -76,6 +76,30 @@ itemsRouter.get("/search", async (req, res, next) => {
 });
 
 // PATCH /items/:kind/:id/resolve { resolved: boolean } — mark a mention handled (or reopen it)
+// GET /items/post/:id and /items/comment/:id — one mention, in the same shape as the lists.
+// The mobile app uses it when a push notification opens the app straight onto a mention.
+itemsRouter.get("/items/:kind(post|comment)/:id", async (req, res, next) => {
+  try {
+    const orgId = orgOf(req);
+    const { kind, id } = req.params;
+    if (kind === "post") {
+      const post = await prisma.post.findFirst({ where: { id, organizationId: orgId }, include: { keyword: true } });
+      if (!post) return res.status(404).json({ error: "Mention not found." });
+      const { rawItem: _raw, ...rest } = post as typeof post & { rawItem?: unknown };
+      return res.json({ type: "post", ...rest, keyword: post.keyword.term });
+    }
+    const comment = await prisma.comment.findFirst({
+      where: { id, organizationId: orgId },
+      include: { keyword: true, post: { select: { id: true, url: true, platform: true, title: true } } },
+    });
+    if (!comment) return res.status(404).json({ error: "Mention not found." });
+    const { rawItem: _raw, ...rest } = comment as typeof comment & { rawItem?: unknown };
+    res.json({ type: "comment", ...rest, keyword: comment.keyword.term, platform: comment.post?.platform ?? null });
+  } catch (err) {
+    next(err);
+  }
+});
+
 itemsRouter.patch("/items/:kind/:id/resolve", async (req, res, next) => {
   try {
     const orgId = orgOf(req);

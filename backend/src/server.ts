@@ -20,6 +20,7 @@ import { competitorsRouter } from "./routes/competitors";
 import { exportRouter } from "./routes/export";
 import { startHourlyScraperCron } from "./services/cronScheduler";
 import { billingRouter, stripeWebhookHandler } from "./routes/billing";
+import { devicesRouter } from "./routes/devices";
 import { backfillLegacyOrganizations, PlanError } from "./services/billingService";
 
 const app = express();
@@ -91,6 +92,7 @@ app.use("/api/auth", authRouter);
 app.use("/api", requireAuth);
 app.use("/api/settings", settingsRouter);
 app.use("/api/billing", billingRouter);
+app.use("/api/devices", devicesRouter);
 app.use("/api/export", exportRouter);
 app.use("/api/google-scraper", googleScraperRouter);
 app.use(["/api/competitor-cards", "/api/competitors"], competitorsRouter);
