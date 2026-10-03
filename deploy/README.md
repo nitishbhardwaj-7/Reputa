@@ -42,6 +42,34 @@ tail /var/log/reputa-backup.log
 # restore: gunzip -c dump.sql.gz | docker exec -i reputa-db psql -U reputa reputa
 ```
 
+## Billing
+
+Every new workspace starts on a 14-day trial (`TRIAL_DAYS`) with Growth limits and no card.
+When it ends, scanning and alerts pause; data stays readable and the owner is emailed three
+days before and on the day. Plans and limits live in `backend/src/config/plans.ts`.
+
+**Without Stripe** (default): "Choose plan" emails the request to `OPERATOR_EMAIL`
+(falls back to `SMTP_USER`). After the customer pays, activate by hand:
+
+```bash
+docker exec reputa-api node dist/cli/setPlan.js owner@customer.com growth yearly        # 366 days
+docker exec reputa-api node dist/cli/setPlan.js owner@customer.com starter monthly 31   # explicit days
+docker exec reputa-api node dist/cli/setPlan.js owner@customer.com trial                # restart a trial
+```
+
+**With Stripe**: create one product per plan with a monthly and a yearly price, then add to
+`backend/.env` and run `deploy.sh`:
+
+```
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...          # endpoint: https://<domain>/api/billing/webhook
+STRIPE_PRICE_STARTER_MONTHLY=price_...   # …_STARTER_YEARLY, _GROWTH_*, _SCALE_*
+```
+
+Webhook events to enable: `checkout.session.completed`, `customer.subscription.created`,
+`customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`.
+Checkout, renewals, failed payments (3-day grace) and cancellations then sync automatically.
+
 ## Notes
 
 - The API runs `prisma db push` on boot to keep the schema in sync. Once tenants hold

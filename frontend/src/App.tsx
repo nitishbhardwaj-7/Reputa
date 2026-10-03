@@ -12,6 +12,7 @@ import { AlertsPage } from "./pages/AlertsPage";
 import { SourcesPage } from "./pages/SourcesPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { BillingPage } from "./pages/BillingPage";
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="alerts" element={<AlertsPage />} />
           <Route path="sources" element={<SourcesPage />} />
           <Route path="reports" element={<ReportsPage />} />
+          <Route path="billing" element={<BillingPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>

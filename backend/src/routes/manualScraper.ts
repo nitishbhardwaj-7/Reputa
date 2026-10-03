@@ -1,3 +1,4 @@
+import { assertCanScan } from "../services/billingService";
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { runPythonSocialScraper } from "../services/pythonScraperService";
@@ -211,6 +212,7 @@ manualScraperRouter.post("/scrape", async (req, res, next) => {
     if (!isScraperPlatform(platform)) {
       return res.status(400).json({ error: `Platform must be one of: ${SCRAPER_PLATFORMS.join(", ")}.` });
     }
+    await assertCanScan(orgId);
 
     const rawItems = await runPythonSocialScraper({
       keyword: term,

@@ -1,3 +1,4 @@
+import { assertCanScan, assertFeature } from "../services/billingService";
 import { Router, Request, Response } from "express";
 import { spawn } from "child_process";
 import path from "path";
@@ -293,6 +294,8 @@ googleScraperRouter.post("/scan", async (req, res, next) => {
     const orgId = orgOf(req);
     const state = stateFor(orgId);
     if (state.running) return res.status(409).json({ error: "A scan is already running." });
+    await assertFeature(orgId, "searchScanning");
+    await assertCanScan(orgId);
 
     const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { brandName: true } });
     const { keyword, engine } = req.body ?? {};
@@ -338,6 +341,7 @@ googleScraperRouter.post("/scan", async (req, res, next) => {
 googleScraperRouter.post("/export-excel", async (req, res, next) => {
   try {
     const orgId = orgOf(req);
+    await assertFeature(orgId, "exports");
     const { items, filters } = req.body ?? {};
     let exportItems: GoogleExportItem[] = Array.isArray(items) ? items : [];
     if (exportItems.length === 0) {
@@ -361,6 +365,7 @@ googleScraperRouter.post("/export-excel", async (req, res, next) => {
 googleScraperRouter.get("/export-excel", async (req, res, next) => {
   try {
     const orgId = orgOf(req);
+    await assertFeature(orgId, "exports");
     const platform = String(req.query.platform ?? "All");
     const query = String(req.query.q ?? req.query.query ?? "");
     const exportItems = (await fetchGoogleMentions(orgId, platform, query, Number(req.query.limit) || 5000)).mentions as GoogleExportItem[];

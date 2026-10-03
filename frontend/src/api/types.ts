@@ -18,7 +18,56 @@ export interface Organization {
   brandName: string;
   alertEmails: string[];
   plan: string;
+  trialEndsAt?: string | null;
+  currentPeriodEnd?: string | null;
+  /** Effective state resolved by the server against the clock. */
+  subscriptionState?: SubscriptionState;
   createdAt?: string;
+}
+
+export type SubscriptionState = "trialing" | "active" | "past_due" | "expired" | "canceled";
+export type BillingInterval = "monthly" | "yearly";
+export type PaidPlanId = "starter" | "growth" | "scale";
+
+export interface PlanLimits {
+  mentionsPerMonth: number;
+  keywords: number;
+  competitors: number;
+  alertRecipients: number;
+  searchScanning: boolean;
+  exports: boolean;
+}
+
+export interface Entitlements {
+  plan: "trial" | PaidPlanId;
+  planName: string;
+  state: SubscriptionState;
+  usable: boolean;
+  interval: BillingInterval | null;
+  trialEndsAt: string | null;
+  trialDaysLeft: number | null;
+  currentPeriodEnd: string | null;
+  cancelsAtPeriodEnd: boolean;
+  managedByStripe: boolean;
+  limits: PlanLimits;
+  usage: { mentionsThisMonth: number; keywords: number; competitors: number; alertRecipients: number };
+}
+
+export interface BillingPlan {
+  id: PaidPlanId;
+  name: string;
+  description: string;
+  priceMonthly: number;
+  priceYearly: number;
+  limits: PlanLimits;
+  features: string[];
+}
+
+export interface BillingResponse {
+  entitlements: Entitlements;
+  plans: BillingPlan[];
+  trialDays: number;
+  checkout: "stripe" | "request";
 }
 
 export interface AuthResponse {

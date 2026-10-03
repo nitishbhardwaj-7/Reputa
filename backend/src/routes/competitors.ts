@@ -8,6 +8,7 @@ import { ProcessingStatus } from "../types/status";
 import { analyzePost, analyzeComment, upsertKeyword } from "../services/pipelineService";
 import { syncCompetitorFlags } from "../services/queryService";
 import { orgOf } from "../middleware/auth";
+import { assertCanAddCompetitor, assertCanScan } from "../services/billingService";
 import { isScraperPlatform } from "./manualScraper";
 
 export const competitorsRouter = Router();
@@ -201,6 +202,8 @@ competitorsRouter.post("/cards", async (req, res, next) => {
       return res.status(400).json({ error: "A valid platform and a competitor name are required." });
     }
     const cleanUrl = typeof searchUrl === "string" && searchUrl.trim() ? searchUrl.trim() : defaultSearchUrl(cleanPlatform, cleanKeyword);
+    const already = await prisma.competitorCard.findFirst({ where: { organizationId: orgId, platform: cleanPlatform, keyword: cleanKeyword }, select: { id: true } });
+    if (!already) await assertCanAddCompetitor(orgId);
 
     const card = await prisma.competitorCard.upsert({
       where: { organizationId_platform_keyword: { organizationId: orgId, platform: cleanPlatform, keyword: cleanKeyword } },
@@ -246,6 +249,7 @@ competitorsRouter.post("/cards/run-card/:id", async (req, res, next) => {
     const orgId = orgOf(req);
     const card = await prisma.competitorCard.findFirst({ where: { id: req.params.id, organizationId: orgId } });
     if (!card) return res.status(404).json({ error: "Competitor not found." });
+    await assertCanScan(orgId);
 
     const rawItems = await runPythonSocialScraper({ keyword: card.keyword, url: card.searchUrl || undefined, limit: 100, platform: card.platform as any });
     const result = await runCompetitorScrapePipeline(orgId, card.keyword, card.platform, rawItems);
@@ -263,6 +267,7 @@ competitorsRouter.post("/cards/run-all", async (req, res, next) => {
     const orgId = orgOf(req);
     const activeCards = await prisma.competitorCard.findMany({ where: { organizationId: orgId, enabled: true } });
     if (activeCards.length === 0) return res.json({ ok: true, message: "No active competitors to scan.", newItems: 0 });
+    await assertCanScan(orgId);
 
     let totalNew = 0;
     for (const card of activeCards) {

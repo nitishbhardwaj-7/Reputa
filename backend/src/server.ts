@@ -19,6 +19,8 @@ import { googleScraperRouter } from "./routes/googleScraper";
 import { competitorsRouter } from "./routes/competitors";
 import { exportRouter } from "./routes/export";
 import { startHourlyScraperCron } from "./services/cronScheduler";
+import { billingRouter, stripeWebhookHandler } from "./routes/billing";
+import { backfillLegacyOrganizations, PlanError } from "./services/billingService";
 
 const app = express();
 
@@ -44,6 +46,9 @@ try {
   console.warn("Schema sync notice:", err?.message || err);
 }
 refreshEnvFromDisk().catch(() => {});
+backfillLegacyOrganizations()
+  .then((n) => { if (n > 0) console.log(`Started a trial for ${n} workspace(s) created before billing.`); })
+  .catch((err) => console.warn("Billing backfill notice:", err?.message || err));
 
 // Behind nginx in production; needed for correct client IPs in rate limiting.
 app.set("trust proxy", 1);
@@ -60,6 +65,8 @@ app.use(
   })
 );
 app.use(cookieParser());
+// Stripe signs the raw request bytes, so this route must run before the JSON parser.
+app.post("/api/billing/webhook", express.raw({ type: "application/json" }), stripeWebhookHandler);
 app.use(express.json({ limit: "2mb" }));
 
 app.use(
@@ -83,6 +90,7 @@ app.use("/api/auth", authRouter);
 // Everything below requires a signed-in user and is scoped to their organization.
 app.use("/api", requireAuth);
 app.use("/api/settings", settingsRouter);
+app.use("/api/billing", billingRouter);
 app.use("/api/export", exportRouter);
 app.use("/api/google-scraper", googleScraperRouter);
 app.use(["/api/competitor-cards", "/api/competitors"], competitorsRouter);
@@ -110,6 +118,8 @@ if (process.env.SERVE_STATIC_DIR) {
 
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (err?.message === "Not allowed by CORS") return res.status(403).json({ error: "Origin not allowed." });
+  // The workspace's plan doesn't cover this request; the UI turns `upgrade` into a prompt.
+  if (err instanceof PlanError) return res.status(402).json({ error: err.message, code: err.code, upgrade: true });
   console.error("SERVER ERROR:", err);
   // Never leak stack traces or internal messages to tenants in production.
   const msg = env.IS_PRODUCTION ? "Something went wrong on our side." : err?.message || "Unexpected server error.";

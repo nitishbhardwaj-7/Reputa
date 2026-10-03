@@ -24,7 +24,17 @@ model Organization {
   // The brand being monitored. Used as the default search query and in alert emails.
   brandName   String
   alertEmails String[] @default([])
-  plan        String   @default("free") // "free" | "pro" | "enterprise"
+  // Billing. `plan` is "trial" | "starter" | "growth" | "scale" (see src/config/plans.ts).
+  plan                 String    @default("trial")
+  trialEndsAt          DateTime?
+  // "trialing" | "active" | "past_due" | "canceled"; the effective state also depends on the dates.
+  subscriptionStatus   String    @default("trialing")
+  billingInterval      String?   // "monthly" | "yearly"
+  currentPeriodEnd     DateTime?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  trialReminderSentAt  DateTime?
+  trialEndedNoticeAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -35,6 +45,9 @@ model Organization {
   scrapeRuns       ScrapeRun[]
   posts            Post[]
   comments         Comment[]
+
+  // Not @unique: `db push` will not add a unique constraint to a populated table without --accept-data-loss.
+  @@index([stripeCustomerId])
 }
 
 model User {

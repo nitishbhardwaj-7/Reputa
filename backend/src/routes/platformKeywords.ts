@@ -5,6 +5,7 @@ import { runManualScrapePipeline, isScraperPlatform } from "./manualScraper";
 import { getCronStatus, runOrganizationCycle } from "../services/cronScheduler";
 import { orgOf } from "../middleware/auth";
 import { SCRAPER_PLATFORMS } from "../services/queryService";
+import { assertCanAddKeywords, assertCanScan } from "../services/billingService";
 
 export const platformKeywordsRouter = Router();
 
@@ -43,6 +44,7 @@ platformKeywordsRouter.post("/", async (req, res, next) => {
     if (!isScraperPlatform(cleanPlatform)) {
       return res.status(400).json({ error: `Platform must be one of: ${SCRAPER_PLATFORMS.join(", ")}.` });
     }
+    await assertCanAddKeywords(orgId, 1);
 
     const created = await prisma.platformKeyword.create({
       data: {
@@ -68,6 +70,11 @@ platformKeywordsRouter.post("/bulk", async (req, res, next) => {
     const cleanKeyword = typeof keyword === "string" ? keyword.trim() : "";
     const list: string[] = Array.isArray(platforms) ? platforms.map((p) => String(p).toLowerCase().trim()) : [];
     if (!cleanKeyword || list.length === 0) return res.status(400).json({ error: "A keyword and at least one platform are required." });
+    // Only the cards that don't exist yet count against the plan.
+    const wanted = Array.from(new Set(list.filter(isScraperPlatform)));
+    const existing = await prisma.platformKeyword.findMany({ where: { organizationId: orgId, keyword: cleanKeyword, platform: { in: wanted } }, select: { platform: true } });
+    const fresh = wanted.filter((p) => !existing.some((e) => e.platform === p));
+    if (fresh.length > 0) await assertCanAddKeywords(orgId, fresh.length);
 
     const created = [];
     for (const platform of list) {
@@ -117,6 +124,7 @@ platformKeywordsRouter.post("/run-card/:id", async (req, res, next) => {
     const orgId = orgOf(req);
     const card = await prisma.platformKeyword.findFirst({ where: { id: req.params.id, organizationId: orgId } });
     if (!card) return res.status(404).json({ error: "Keyword not found." });
+    await assertCanScan(orgId);
 
     const rawItems = await runPythonSocialScraper({ keyword: card.keyword, url: card.searchUrl || undefined, limit: 100, platform: card.platform as any });
     const result = await runManualScrapePipeline(orgId, card.keyword, card.platform, rawItems);
@@ -130,6 +138,7 @@ platformKeywordsRouter.post("/run-card/:id", async (req, res, next) => {
 // POST /run-all — run this tenant's full cycle now
 platformKeywordsRouter.post("/run-all", async (req, res, next) => {
   try {
+    await assertCanScan(orgOf(req));
     res.json(await runOrganizationCycle(orgOf(req)));
   } catch (err) {
     next(err);

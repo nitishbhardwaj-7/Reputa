@@ -45,7 +45,7 @@ export function SettingsPage() {
 
       <div className="stack" style={{ gap: 14 }}>
         <form className="form-card" onSubmit={saveOrg}>
-          <div className="between"><h3>Workspace</h3><span className="badge quiet">{(organization?.plan ?? "free").replace(/^\w/, (c) => c.toUpperCase())} plan</span></div>
+          <div className="between"><h3>Workspace</h3><a href="/app/billing" className="badge quiet">{organization?.plan === "trial" || !organization?.plan ? "Free trial" : organization.plan.replace(/^\w/, (c) => c.toUpperCase()) + " plan"} · Manage</a></div>
           <div className="form-row">
             <div className="field"><label>Company name</label><input value={orgName} onChange={(e) => setOrgName(e.target.value)} /></div>
             <div className="field"><label>Brand being monitored</label><input value={brandName} onChange={(e) => setBrandName(e.target.value)} /><span className="hint">Used for Google, Bing, YouTube and News scans and named in alert emails.</span></div>

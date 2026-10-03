@@ -51,13 +51,13 @@ export function SignupPage() {
         <Link to="/" className="wordmark"><span className="mark">{APP_NAME[0]}</span>{APP_NAME}</Link>
         <div className="form">
           <h1>Create your account.</h1>
-          <p className="sub">Start monitoring your brand in minutes.<br />No credit card required.</p>
+          <p className="sub">14-day free trial with everything in Growth.<br />No credit card required.</p>
           <form onSubmit={onSubmit}>
             {error && <div className="err">{error}</div>}
             <div className="field"><label>Full name</label><input type="text" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" /></div>
             <div className="field"><label>Work email</label><input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" /></div>
             <div className="field"><label>Password</label><input type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Create a strong password" /></div>
-            <button type="submit" className="btn primary" disabled={busy}>{busy ? <span className="spinner" /> : "Create account"}</button>
+            <button type="submit" className="btn primary" disabled={busy}>{busy ? <span className="spinner" /> : "Start free trial"}</button>
           </form>
           <div className="or">or continue with</div>
           <SocialButtons onUnavailable={() => toast.show("Single sign-on is coming soon — use your email and password for now.")} />

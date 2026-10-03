@@ -22,6 +22,9 @@ import type {
   GoogleStatsResponse,
   GoogleScanPayload,
   GoogleMention,
+  BillingResponse,
+  BillingInterval,
+  PaidPlanId,
 } from "./types";
 
 function getApiBaseUrl(): string {
@@ -40,12 +43,21 @@ export const BASE_URL = getApiBaseUrl();
 /** Fired when the server says the session is gone; the auth provider listens and signs out. */
 export const AUTH_EXPIRED_EVENT = "reputa:auth-expired";
 
+/** Fired when the server answers 402: the workspace's plan doesn't cover the request. */
+export const PLAN_LIMIT_EVENT = "reputa:plan-limit";
+
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
+}
+
+function announcePlanLimit(message: string) {
+  window.dispatchEvent(new CustomEvent(PLAN_LIMIT_EVENT, { detail: message }));
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -57,16 +69,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     let message = `Request failed with status ${res.status}`;
+    let code: string | undefined;
     try {
       const body = await res.json();
       if (body?.error) message = body.error;
+      code = body?.code;
     } catch {
       // non-JSON error body
     }
+    if (res.status === 402) announcePlanLimit(message);
     if (res.status === 401 && !path.startsWith("/auth/login") && !path.startsWith("/auth/signup")) {
       window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     }
-    throw new ApiError(message, res.status);
+    throw new ApiError(message, res.status, code);
   }
   return res.json();
 }
@@ -181,9 +196,32 @@ export const api = {
   getCompetitorOverview: () => request<CompetitorOverview>("/competitors/overview"),
 
   // ---------------------------------------------------------------- exports (cookie auth works for navigations too)
-  exportToExcel: (filters: { scope?: string; platform?: string; keyword?: string; dateFrom?: string; dateTo?: string; sentiment?: string; search?: string; author?: string } = {}) => {
-    window.open(`${BASE_URL}/export/excel${toQuery(filters)}`, "_blank");
+  // Downloaded through fetch (not a new tab) so a plan limit shows as a prompt instead of raw JSON.
+  exportToExcel: async (filters: { scope?: string; platform?: string; keyword?: string; dateFrom?: string; dateTo?: string; sentiment?: string; search?: string; author?: string } = {}) => {
+    const res = await fetch(`${BASE_URL}/export/excel${toQuery(filters)}`, { credentials: "include" });
+    if (!res.ok) {
+      let message = "Failed to export the report.";
+      try { const body = await res.json(); if (body?.error) message = body.error; } catch { /* not JSON */ }
+      if (res.status === 402) announcePlanLimit(message);
+      return;
+    }
+    const blob = await res.blob();
+    const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "")?.[1] || "Mentions_Report.xlsx";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   },
+
+  // ---------------------------------------------------------------- billing
+  getBilling: () => request<BillingResponse>("/billing"),
+  startCheckout: (plan: PaidPlanId, interval: BillingInterval) =>
+    request<{ mode: "stripe" | "request"; url?: string; message?: string }>("/billing/checkout", { method: "POST", body: JSON.stringify({ plan, interval }) }),
+  openBillingPortal: () => request<{ url: string }>("/billing/portal", { method: "POST" }),
 
   exportGoogleToExcel: async (data: {
     items?: GoogleMention[];

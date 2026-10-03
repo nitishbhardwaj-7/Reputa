@@ -12,7 +12,8 @@
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "plan:set": "tsx src/cli/setPlan.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
@@ -26,6 +27,7 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^10.0.1",
+    "stripe": "^23.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

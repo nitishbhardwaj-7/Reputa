@@ -159,7 +159,7 @@ export function LandingPage() {
             <Link to="/signup" className="btn primary lg">Start monitoring free <Arrow /></Link>
             <a href="#how" className="btn secondary lg">See how it works</a>
           </div>
-          <div className="fine">No credit card required · Set up in two minutes · Cancel anytime</div>
+          <div className="fine">14-day free trial · No credit card required · Cancel anytime</div>
         </div>
         <div className="hero-visual">
           <div className="scroller">

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Icons } from "../components/ui";
+import { useAuth } from "../auth/AuthContext";
 import { Arrow, Lines } from "./Lines";
 
 const PLANS = [
@@ -12,6 +13,7 @@ const PLANS = [
 /** The black pricing block, shared by the landing page and /pricing. */
 export function PricingSection({ id = "pricing" }: { id?: string }) {
   const [yearly, setYearly] = useState(false);
+  const { user } = useAuth();
   return (
     <section id={id} className="pr">
       <div className="wrap">
@@ -19,7 +21,7 @@ export function PricingSection({ id = "pricing" }: { id?: string }) {
           <div>
             <div className="eyebrow">Simple, transparent pricing</div>
             <Lines data-lines className="h-lg" lines={["Plans for every stage", "of your growth."]} />
-            <p className="lede">Start monitoring your brand in minutes. No credit card required.</p>
+            <p className="lede">Every plan starts with a 14-day free trial of everything in Growth. No credit card required.</p>
           </div>
           <div className="toggle">
             <button type="button" className={!yearly ? "on" : ""} onClick={() => setYearly(false)}>Monthly</button>
@@ -36,12 +38,12 @@ export function PricingSection({ id = "pricing" }: { id?: string }) {
                 <div className="pd">{p.desc}</div>
                 <div className="pp"><b>${price}</b><span>/ month{yearly ? ", billed yearly" : ""}</span></div>
                 <ul>{p.features.map((f) => <li key={f}><span className="ck">{Icons.check}</span>{f}</li>)}</ul>
-                <Link to="/signup" className={`btn ${p.popular ? "primary" : "secondary"}`}>Start free <Arrow /></Link>
+                <Link to={user ? "/app/billing" : "/signup"} className={`btn ${p.popular ? "primary" : "secondary"}`}>{user ? `Choose ${p.name}` : "Start free trial"} <Arrow /></Link>
               </div>
             );
           })}
         </div>
-        <p className="pr-note">All plans start with a 14-day trial. Multiple brands or white-label reports? <a href="mailto:hello@adaptsmedia.com">Talk to us →</a></p>
+        <p className="pr-note">Pick a plan when your trial ends — or sooner. Multiple brands or white-label reports? <a href="mailto:hello@adaptsmedia.com">Talk to us →</a></p>
       </div>
     </section>
   );

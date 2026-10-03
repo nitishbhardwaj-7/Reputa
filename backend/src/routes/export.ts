@@ -1,3 +1,4 @@
+import { assertFeature, PlanError } from "../services/billingService";
 import { Router } from "express";
 import { generateExcelReport, ExcelExportOptions } from "../services/excelService";
 import { orgOf } from "../middleware/auth";
@@ -7,6 +8,7 @@ export const exportRouter = Router();
 // GET /excel?scope=&keyword=&platform=&sentiment=&dateFrom=&dateTo=&search=&author=
 exportRouter.get("/excel", async (req, res) => {
   try {
+    await assertFeature(orgOf(req), "exports");
     const scope = (["brand", "competitor", "all"].includes(String(req.query.scope)) ? String(req.query.scope) : "all") as ExcelExportOptions["scope"];
     const sentimentRaw = req.query.sentiment ? String(req.query.sentiment).toUpperCase() : undefined;
     const options: ExcelExportOptions = {
@@ -26,6 +28,7 @@ exportRouter.get("/excel", async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.send(buffer);
   } catch (err: any) {
+    if (err instanceof PlanError) return res.status(402).json({ error: err.message, code: err.code, upgrade: true });
     console.error("Excel export error:", err);
     res.status(500).json({ error: err?.message || "Failed to generate the report." });
   }

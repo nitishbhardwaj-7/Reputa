@@ -4,6 +4,9 @@ import { prisma } from "../lib/prisma";
 import { platformStatus, refreshEnvFromDisk } from "../config/env";
 import { sendNegativeMentionAlert, parseRecipientList } from "../services/emailService";
 import { orgOf } from "../middleware/auth";
+import { assertRecipientCount } from "../services/billingService";
+
+const ORG_SELECT = { id: true, name: true, slug: true, brandName: true, alertEmails: true, plan: true, trialEndsAt: true, currentPeriodEnd: true, createdAt: true } as const;
 
 export const settingsRouter = Router();
 
@@ -15,7 +18,7 @@ export const settingsRouter = Router();
 const updateSchema = z.object({
   name: z.string().trim().min(1, "Company name is required.").max(80).optional(),
   brandName: z.string().trim().min(1, "Brand name is required.").max(80).optional(),
-  alertEmails: z.array(z.string().trim().toLowerCase().email("One of the alert emails is invalid.")).max(10).optional(),
+  alertEmails: z.array(z.string().trim().toLowerCase().email("One of the alert emails is invalid.")).max(50).optional(),
 });
 
 settingsRouter.get("/", async (req, res, next) => {
@@ -23,7 +26,7 @@ settingsRouter.get("/", async (req, res, next) => {
     await refreshEnvFromDisk();
     const org = await prisma.organization.findUnique({
       where: { id: orgOf(req) },
-      select: { id: true, name: true, slug: true, brandName: true, alertEmails: true, plan: true, createdAt: true },
+      select: ORG_SELECT,
     });
     if (!org) return res.status(404).json({ error: "Organization not found." });
     res.json({ organization: org, platform: platformStatus() });
@@ -38,14 +41,16 @@ settingsRouter.patch("/", async (req, res, next) => {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input." });
 
     const data = parsed.data;
+    const recipients = data.alertEmails !== undefined ? Array.from(new Set(parseRecipientList(data.alertEmails))) : undefined;
+    if (recipients) await assertRecipientCount(orgOf(req), recipients.length);
     const org = await prisma.organization.update({
       where: { id: orgOf(req) },
       data: {
         ...(data.name !== undefined ? { name: data.name } : {}),
         ...(data.brandName !== undefined ? { brandName: data.brandName } : {}),
-        ...(data.alertEmails !== undefined ? { alertEmails: Array.from(new Set(parseRecipientList(data.alertEmails))) } : {}),
+        ...(recipients ? { alertEmails: recipients } : {}),
       },
-      select: { id: true, name: true, slug: true, brandName: true, alertEmails: true, plan: true, createdAt: true },
+      select: ORG_SELECT,
     });
     res.json({ ok: true, organization: org });
   } catch (err) {

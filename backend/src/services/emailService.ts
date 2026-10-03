@@ -116,6 +116,23 @@ export async function sendNegativeMentionAlert(item: NegativeMentionPayload, rec
   }
 }
 
+/** Operator/system mail (trial notices, upgrade requests). Returns true only when the server accepted it. */
+export async function sendSystemEmail(to: string[], subject: string, html: string): Promise<boolean> {
+  await refreshEnvFromDisk();
+  const transporter = createSmtpTransporter();
+  const recipients = parseRecipientList(to);
+  if (!transporter || recipients.length === 0) return false;
+  try {
+    const senderUser = env.SMTP_USER?.trim() || "noreply@localhost";
+    const from = env.MAIL_FROM?.trim() || `${env.APP_NAME} <${senderUser}>`;
+    await transporter.sendMail({ from, to: recipients.join(", "), subject, html });
+    return true;
+  } catch (err: any) {
+    console.error("System email failed:", err?.message || err);
+    return false;
+  }
+}
+
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")

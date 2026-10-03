@@ -11,6 +11,7 @@ import {
   makeOrgSlug,
 } from "../lib/auth";
 import { requireAuth } from "../middleware/auth";
+import { stateOf, trialEndFromNow } from "../services/billingService";
 
 export const authRouter = Router();
 
@@ -43,8 +44,19 @@ function publicUser(u: { id: string; email: string; name: string; role: string; 
   return { id: u.id, email: u.email, name: u.name, role: u.role, createdAt: u.createdAt };
 }
 
-function publicOrg(o: { id: string; name: string; slug: string; brandName: string; alertEmails: string[]; plan: string }) {
-  return { id: o.id, name: o.name, slug: o.slug, brandName: o.brandName, alertEmails: o.alertEmails, plan: o.plan };
+type OrgRow = {
+  id: string; name: string; slug: string; brandName: string; alertEmails: string[]; plan: string;
+  trialEndsAt: Date | null; subscriptionStatus: string; billingInterval: string | null; currentPeriodEnd: Date | null;
+  stripeCustomerId: string | null; stripeSubscriptionId: string | null;
+};
+
+function publicOrg(o: OrgRow) {
+  return {
+    id: o.id, name: o.name, slug: o.slug, brandName: o.brandName, alertEmails: o.alertEmails, plan: o.plan,
+    trialEndsAt: o.trialEndsAt, currentPeriodEnd: o.currentPeriodEnd,
+    // The effective state, already resolved against the clock, so the UI never has to guess.
+    subscriptionState: stateOf(o),
+  };
 }
 
 function firstIssue(err: z.ZodError): string {
@@ -70,6 +82,10 @@ authRouter.post("/signup", credentialLimiter, async (req, res, next) => {
         brandName,
         // Alerts go to the signup email until the owner changes it.
         alertEmails: [email],
+        // Every workspace starts on a full-featured trial; no card required.
+        plan: "trial",
+        subscriptionStatus: "trialing",
+        trialEndsAt: trialEndFromNow(),
         users: {
           create: { email, name, passwordHash, role: "owner", lastLoginAt: new Date() },
         },

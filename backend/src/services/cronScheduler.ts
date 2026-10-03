@@ -1,3 +1,5 @@
+import { hasFeature, scanBlocker } from "./billingService";
+import { sendTrialNotices } from "./trialNotices";
 import { prisma } from "../lib/prisma";
 import { runPythonSocialScraper } from "./pythonScraperService";
 import { runManualScrapePipeline } from "../routes/manualScraper";
@@ -82,6 +84,12 @@ export async function runOrganizationCycle(orgId: string) {
   if (runningOrgs.has(orgId)) {
     return { ok: false, message: "A scan is already in progress for your workspace.", newItems: 0 };
   }
+  // Plan gate: an ended trial, a lapsed subscription or a used-up allowance pauses scanning.
+  const blocked = await scanBlocker(orgId);
+  if (blocked) {
+    pushLog(orgId, "billing", "plan", "FAILED", 0, blocked.message);
+    return { ok: false, message: blocked.message, newItems: 0 };
+  }
   runningOrgs.add(orgId);
 
   try {
@@ -90,6 +98,12 @@ export async function runOrganizationCycle(orgId: string) {
     let totalNewItems = 0;
 
     for (const card of cards) {
+      // The allowance can run out part-way through a cycle; stop as soon as it does.
+      const quota = await scanBlocker(orgId);
+      if (quota) {
+        pushLog(orgId, "billing", "plan", "FAILED", 0, quota.message);
+        break;
+      }
       try {
         const rawItems = await runPythonSocialScraper({ keyword: card.keyword, url: card.searchUrl || undefined, limit: 100, platform: card.platform as any });
         const result = await runManualScrapePipeline(orgId, card.keyword, card.platform, rawItems);
@@ -104,7 +118,7 @@ export async function runOrganizationCycle(orgId: string) {
     }
 
     // Brand search scan (Google / Bing / YouTube / News) when the platform has a search key.
-    if (org?.brandName && env.SERPER_API_KEY) {
+    if (org?.brandName && env.SERPER_API_KEY && (await hasFeature(orgId, "searchScanning")) && !(await scanBlocker(orgId))) {
       try {
         const { ingest } = await runSearchScanForOrg(orgId, org.brandName);
         totalNewItems += ingest.postsCreated;
@@ -155,6 +169,13 @@ export async function executeHourlyScrapeCycle() {
   lastCronRunAt = new Date();
 
   try {
+    try {
+      const notices = await sendTrialNotices();
+      if (notices.reminders || notices.ended) console.log(`✉ [Cron] Trial notices: ${notices.reminders} reminder(s), ${notices.ended} ended.`);
+    } catch (err: any) {
+      console.error("⚠ [Cron] Trial notices failed:", err?.message || err);
+    }
+
     const orgs = await prisma.organization.findMany({
       where: { OR: [{ platformKeywords: { some: { enabled: true } } }, { brandName: { not: "" } }] },
       select: { id: true, name: true },
