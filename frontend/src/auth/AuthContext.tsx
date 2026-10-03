@@ -8,6 +8,8 @@ interface AuthState {
   loading: boolean;
   refresh: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
+  /** Signs in (or signs up) with a Google ID token. Resolves with whether the account is new. */
+  loginWithGoogle: (credential: string) => Promise<{ created: boolean }>;
   signup: (data: { name: string; email: string; password: string; organizationName: string; brandName: string }) => Promise<void>;
   logout: () => Promise<void>;
   setOrganization: (org: Organization) => void;
@@ -54,6 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const res = await api.login({ email, password });
         setUser(res.user);
         setOrganization(res.organization);
+      },
+      async loginWithGoogle(credential) {
+        const res = await api.googleAuth(credential);
+        setUser(res.user);
+        setOrganization(res.organization);
+        return { created: Boolean(res.created) };
       },
       async signup(data) {
         const res = await api.signup(data);

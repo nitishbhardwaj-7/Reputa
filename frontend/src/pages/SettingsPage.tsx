@@ -31,7 +31,7 @@ export function SettingsPage() {
     setOrganization(r.organization); setAlertEmails(r.organization.alertEmails.join(", "));
   }, "Workspace saved."); };
   const saveProfile = (e: FormEvent) => { e.preventDefault(); go("profile", async () => { const r = await api.updateProfile({ name: displayName }); setUser(r.user); }, "Profile updated."); };
-  const savePassword = (e: FormEvent) => { e.preventDefault(); go("pw", async () => { await api.changePassword({ currentPassword, newPassword }); setCurrentPassword(""); setNewPassword(""); }, "Password changed."); };
+  const savePassword = (e: FormEvent) => { e.preventDefault(); go("pw", async () => { await api.changePassword({ currentPassword: currentPassword || undefined, newPassword }); setCurrentPassword(""); setNewPassword(""); if (user) setUser({ ...user, hasPassword: true }); }, "Password changed."); };
 
   const Status = ({ ok, label }: { ok: boolean; label: string }) => <span className={`badge ${ok ? "positive" : "quiet"}`}>{label} · {ok ? "Active" : "Unavailable"}</span>;
 
@@ -69,10 +69,12 @@ export function SettingsPage() {
         <form className="form-card" onSubmit={savePassword}>
           <h3>Password</h3>
           <div className="form-row">
-            <div className="field"><label>Current password</label><input type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></div>
+            {user?.hasPassword === false
+              ? <div className="field"><label>Signed in with Google</label><span className="hint" style={{ lineHeight: 1.5 }}>Add a password if you'd also like to sign in with your email.</span></div>
+              : <div className="field"><label>Current password</label><input type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></div>}
             <div className="field"><label>New password</label><input type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></div>
           </div>
-          <div className="between"><span /><button type="submit" className="btn primary" disabled={busy !== null || !currentPassword || newPassword.length < 8}>{busy === "pw" ? <span className="spinner" /> : "Change password"}</button></div>
+          <div className="between"><span /><button type="submit" className="btn primary" disabled={busy !== null || (user?.hasPassword !== false && !currentPassword) || newPassword.length < 8}>{busy === "pw" ? <span className="spinner" /> : user?.hasPassword === false ? "Set password" : "Change password"}</button></div>
         </form>
       </div>
     </>

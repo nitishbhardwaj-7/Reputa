@@ -78,7 +78,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       // non-JSON error body
     }
     if (res.status === 402) announcePlanLimit(message);
-    if (res.status === 401 && !path.startsWith("/auth/login") && !path.startsWith("/auth/signup")) {
+    if (res.status === 401 && !path.startsWith("/auth/login") && !path.startsWith("/auth/signup") && !path.startsWith("/auth/google")) {
       window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     }
     throw new ApiError(message, res.status, code);
@@ -104,9 +104,11 @@ export const api = {
   signup: (data: { name: string; email: string; password: string; organizationName: string; brandName: string }) =>
     request<AuthResponse>("/auth/signup", { method: "POST", body: JSON.stringify(data) }),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+  authConfig: () => request<{ googleClientId: string | null }>("/auth/config"),
+  googleAuth: (credential: string) => request<AuthResponse>("/auth/google", { method: "POST", body: JSON.stringify({ credential }) }),
   updateProfile: (data: { name: string }) =>
     request<{ user: AuthUser }>("/auth/me", { method: "PATCH", body: JSON.stringify(data) }),
-  changePassword: (data: { currentPassword: string; newPassword: string }) =>
+  changePassword: (data: { currentPassword?: string; newPassword: string }) =>
     request<{ ok: boolean }>("/auth/change-password", { method: "POST", body: JSON.stringify(data) }),
 
   // ---------------------------------------------------------------- settings

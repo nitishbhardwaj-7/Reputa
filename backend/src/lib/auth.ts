@@ -1,10 +1,11 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import type { Response } from "express";
+import type { Request, Response } from "express";
 import { env } from "../config/env";
 
 export const SESSION_COOKIE = "orm_session";
-const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+const WEB_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days, held in an httpOnly cookie
+const MOBILE_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days, held in the device's secure storage
 
 export interface SessionClaims {
   userId: string;
@@ -20,8 +21,8 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
   return bcrypt.compare(plain, hash);
 }
 
-export function signSession(claims: SessionClaims): string {
-  return jwt.sign(claims, env.JWT_SECRET, { expiresIn: SESSION_TTL_SECONDS, algorithm: "HS256" });
+export function signSession(claims: SessionClaims, ttlSeconds = WEB_TTL_SECONDS): string {
+  return jwt.sign(claims, env.JWT_SECRET, { expiresIn: ttlSeconds, algorithm: "HS256" });
 }
 
 export function verifySession(token: string): SessionClaims | null {
@@ -43,12 +44,33 @@ export function setSessionCookie(res: Response, token: string) {
     sameSite: "lax",
     secure: env.COOKIE_SECURE,
     path: "/",
-    maxAge: SESSION_TTL_SECONDS * 1000,
+    maxAge: WEB_TTL_SECONDS * 1000,
   });
 }
 
 export function clearSessionCookie(res: Response) {
   res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: "lax", secure: env.COOKIE_SECURE, path: "/" });
+}
+
+/** Native apps identify themselves with `X-Reputa-Client: mobile` and get a bearer token instead of a cookie. */
+export function isMobileClient(req: Request): boolean {
+  return String(req.header("x-reputa-client") || "").toLowerCase() === "mobile";
+}
+
+/**
+ * Starts a session for whichever client is asking. Browsers get the httpOnly cookie and
+ * nothing in the body (so page scripts can never read the token); the mobile app gets
+ * `{ token, expiresAt }` to keep in secure storage and send as `Authorization: Bearer`.
+ */
+export function issueSession(req: Request, res: Response, claims: SessionClaims): { token?: string; expiresAt?: string } {
+  if (isMobileClient(req)) {
+    return {
+      token: signSession(claims, MOBILE_TTL_SECONDS),
+      expiresAt: new Date(Date.now() + MOBILE_TTL_SECONDS * 1000).toISOString(),
+    };
+  }
+  setSessionCookie(res, signSession(claims));
+  return {};
 }
 
 /** URL-safe slug plus a short random suffix so two "Acme"s never collide. */

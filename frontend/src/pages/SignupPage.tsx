@@ -20,7 +20,7 @@ function guessCompany(name: string, email: string): string {
 }
 
 export function SignupPage() {
-  const { signup } = useAuth();
+  const { signup, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -45,6 +45,19 @@ export function SignupPage() {
     }
   }
 
+  async function onGoogle(credential: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const { created } = await loginWithGoogle(credential);
+      navigate(created ? "/app/onboarding" : "/app", { replace: true });
+    } catch (err: any) {
+      setError(err?.message || "Google sign-up failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="light auth">
       <div className="pane">
@@ -60,7 +73,7 @@ export function SignupPage() {
             <button type="submit" className="btn primary" disabled={busy}>{busy ? <span className="spinner" /> : "Start free trial"}</button>
           </form>
           <div className="or">or continue with</div>
-          <SocialButtons onUnavailable={() => toast.show("Single sign-on is coming soon — use your email and password for now.")} />
+          <SocialButtons onGoogle={onGoogle} onUnavailable={(p) => toast.show(`${p} sign-up is coming soon — use your email and password for now.`)} />
           <div className="alt">Already have an account? <Link to="/login">Sign in</Link></div>
         </div>
         <div />

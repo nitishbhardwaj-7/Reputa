@@ -311,6 +311,8 @@
 .auth .or::before, .auth .or::after { content: ""; flex: 1; height: 1px; background: var(--mk-line); }
 .auth .social { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .auth .social .btn { height: 38px; font-size: 12.5px; }
+.auth .social.with-gsi { grid-template-columns: 1fr; }
+.auth .social .gsi-slot { min-height: 40px; display: flex; justify-content: center; }
 .auth .alt { margin-top: 24px; font-size: 13px; color: var(--mk-ink-2); }
 .auth .alt a { color: var(--mk-ink); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
 .forgot { font-size: 12px; color: var(--mk-ink-2); margin-left: auto; }

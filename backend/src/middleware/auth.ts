@@ -19,10 +19,11 @@ declare global {
 }
 
 function readToken(req: Request): string | null {
+  // The mobile app sends a bearer token; browsers send the httpOnly cookie.
+  const header = req.headers.authorization;
+  if (header && header.startsWith("Bearer ")) return header.slice(7).trim() || null;
   const fromCookie = req.cookies?.[SESSION_COOKIE];
   if (typeof fromCookie === "string" && fromCookie) return fromCookie;
-  const header = req.headers.authorization;
-  if (header && header.startsWith("Bearer ")) return header.slice(7);
   return null;
 }
 

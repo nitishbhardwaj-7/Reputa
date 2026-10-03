@@ -53,7 +53,11 @@ model Organization {
 model User {
   id             String       @id @default(cuid())
   email          String       @unique
-  passwordHash   String
+  // Null for accounts created through Google that never set a password.
+  passwordHash   String?
+  // Google's stable account id ("sub"). Indexed rather than @unique: `db push` will not add a
+  // unique constraint to a populated table. Uniqueness is enforced where accounts are created.
+  googleId       String?
   name           String
   role           String       @default("owner") // "owner" | "member"
   organizationId String
@@ -62,6 +66,7 @@ model User {
   lastLoginAt    DateTime?
 
   @@index([organizationId])
+  @@index([googleId])
 }
 
 // ---------------------------------------------------------------------------

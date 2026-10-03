@@ -9,6 +9,8 @@ export interface AuthUser {
   name: string;
   role: "owner" | "member" | string;
   createdAt: string;
+  hasPassword?: boolean;
+  googleLinked?: boolean;
 }
 
 export interface Organization {
@@ -73,6 +75,8 @@ export interface BillingResponse {
 export interface AuthResponse {
   user: AuthUser;
   organization: Organization;
+  /** True when "Continue with Google" just created the account. */
+  created?: boolean;
 }
 
 export interface PlatformStatus {
