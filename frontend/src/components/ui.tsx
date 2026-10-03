@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { sourceOf } from "../brand";
+import { LOGOS } from "./logos";
 import type { Sentiment } from "../api/types";
 
 /* ---------------------------------------------------------------- source icon */
@@ -15,10 +16,21 @@ const SRC_COLORS: Record<string, string> = {
 
 export function SourceIcon({ platform, url, size = 18 }: { platform?: string | null; url?: string | null; size?: number }) {
   const s = sourceOf(platform, url);
+  const logo = LOGOS[s.id];
+  // The platform's own mark where we have one; a lettered tile for anything else.
+  if (logo) {
+    return (
+      <span className="src-logo" style={{ width: size, height: size }} title={s.label} role="img" aria-label={s.label}>
+        <svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden>
+          {logo.paths.map((p, i) => <path key={i} d={p.d} fill={p.fill ?? logo.color} />)}
+        </svg>
+      </span>
+    );
+  }
   const bg = SRC_COLORS[s.id] ?? "#6b7078";
   return (
     <span className="src-icon" style={{ width: size, height: size, background: bg, fontSize: size * 0.55 }} title={s.label}>
-      {s.id === "google" ? "G" : s.id === "youtube" ? "▶" : s.label[0]}
+      {s.label[0]}
     </span>
   );
 }
