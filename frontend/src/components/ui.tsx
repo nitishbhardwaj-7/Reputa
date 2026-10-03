@@ -151,6 +151,9 @@ export const Icons = {
   down: I("M12 5v14M19 12l-7 7-7-7"),
   refresh: I("M23 4v6h-6M1 20v-6h6M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"),
   plus: I("M12 5v14M5 12h14"),
+  competitors: I("M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"),
+  pause: I("M9 5v14M15 5v14"),
+  play: I("M6 4l14 8-14 8z"),
   trash: I("M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"),
 };
 

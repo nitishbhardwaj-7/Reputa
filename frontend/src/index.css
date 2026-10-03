@@ -287,6 +287,40 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 
 .toast.err { background: var(--negative); }
 .err { background: rgba(229, 72, 77, 0.08); border: 1px solid rgba(229, 72, 77, 0.3); color: #b4363a; padding: 9px 11px; border-radius: var(--radius); font-size: 13px; }
 
+/* ---------------------------------------------------------------- keyword cards */
+.kw-section { margin-bottom: 22px; }
+.kw-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.kw-head h3 { font-size: 14px; font-weight: 600; }
+.kw-head .hint { font-size: 12.5px; color: var(--text-3); }
+.kw-head .btn { margin-left: auto; }
+.kw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.kw-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 14px; display: flex; flex-direction: column; gap: 10px; transition: border-color 0.15s var(--ease); }
+.kw-card:hover { border-color: var(--line-2); }
+.kw-card.paused { background: var(--panel-2); }
+.kw-card .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.kw-card .name { font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; word-break: break-word; }
+.kw-card .nums { display: flex; gap: 14px; font-size: 12.5px; color: var(--text-2); }
+.kw-card .nums b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.kw-card .foot { display: flex; align-items: center; gap: 4px; border-top: 1px solid var(--line-2); padding-top: 10px; margin-top: auto; }
+.kw-card .foot .when { font-size: 12px; color: var(--text-3); margin-right: auto; }
+.kw-card .icon-act { width: 28px; height: 28px; border-radius: 6px; border: none; background: transparent; color: var(--text-2); display: grid; place-items: center; cursor: pointer; }
+.kw-card .icon-act svg { width: 14px; height: 14px; }
+.kw-card .icon-act:hover { background: var(--panel-3); color: var(--text); }
+.kw-card .icon-act.danger:hover { background: rgba(229, 72, 77, 0.1); color: var(--negative); }
+.kw-card .icon-act:disabled { opacity: 0.4; cursor: not-allowed; }
+.kw-card.add { border-style: dashed; align-items: stretch; justify-content: center; min-height: 132px; }
+.kw-card.add .open { border: none; background: transparent; color: var(--text-2); font-size: 13.5px; font-weight: 500; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 0; }
+.kw-card.add .open svg { width: 18px; height: 18px; }
+.kw-card.add .open:hover { color: var(--text); }
+.kw-card.add form { display: flex; flex-direction: column; gap: 8px; }
+.kw-empty { border: 1px dashed var(--line-2); border-radius: var(--radius-lg); padding: 18px; font-size: 13px; color: var(--text-3); }
+.vs-row { display: grid; grid-template-columns: minmax(120px, 1.2fr) 80px 3fr 150px; gap: 14px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line-2); font-size: 13px; }
+.vs-row:last-child { border-bottom: none; }
+.vs-row.head { font-size: 12px; color: var(--text-2); background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.vs-row.you { background: rgba(17, 17, 17, 0.03); }
+.vs-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--panel-3); }
+.vs-bar i { display: block; height: 100%; }
+
 /* ---------------------------------------------------------------- billing */
 .plan-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 8px 24px; font-size: 12.5px; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--text-2); }
 .plan-banner b { color: var(--text); font-weight: 600; }
@@ -344,6 +378,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 
   .form-row { grid-template-columns: 1fr; }
   .donut-wrap { grid-template-columns: 1fr; justify-items: center; }
   .plan-banner { padding: 8px 14px; }
+  .vs-row { grid-template-columns: 1fr 60px; }
+  .vs-row > :nth-child(3), .vs-row > :nth-child(4) { grid-column: 1 / -1; }
+  .vs-row.head > :nth-child(3), .vs-row.head > :nth-child(4) { display: none; }
   .bill-grid { grid-template-columns: 1fr; }
   .bill-col { border-right: none; border-bottom: 1px solid var(--line); }
   .bill-col:last-child { border-bottom: none; }

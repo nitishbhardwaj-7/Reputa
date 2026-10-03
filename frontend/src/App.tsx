@@ -11,6 +11,7 @@ import { MentionsPage } from "./pages/MentionsPage";
 import { AlertsPage } from "./pages/AlertsPage";
 import { SourcesPage } from "./pages/SourcesPage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { CompetitorsPage } from "./pages/CompetitorsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { BillingPage } from "./pages/BillingPage";
 
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="mentions" element={<MentionsPage />} />
           <Route path="alerts" element={<AlertsPage />} />
           <Route path="sources" element={<SourcesPage />} />
+          <Route path="competitors" element={<CompetitorsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="billing" element={<BillingPage />} />
           <Route path="settings" element={<SettingsPage />} />

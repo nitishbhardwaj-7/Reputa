@@ -100,6 +100,7 @@ export function Layout() {
             {Icons.alerts}Alerts{openAlerts > 0 && <span className="count">{openAlerts > 99 ? "99+" : openAlerts}</span>}
           </NavLink>
           <NavLink to="/app/sources" className={link} onClick={close}>{Icons.sources}Sources</NavLink>
+          <NavLink to="/app/competitors" className={link} onClick={close}>{Icons.competitors}Competitors</NavLink>
           <NavLink to="/app/reports" className={link} onClick={close}>{Icons.reports}Reports</NavLink>
           <div className="spacer" />
           <NavLink to="/app/billing" className={link} onClick={close}>{Icons.calendar}Billing</NavLink>

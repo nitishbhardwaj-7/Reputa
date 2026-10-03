@@ -1,3 +1,4 @@
+import { cardStatsLookup, competitorBreakdown } from "../services/cardStats";
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { runPythonSocialScraper } from "../services/pythonScraperService";
@@ -185,7 +186,8 @@ function defaultSearchUrl(platform: string, keyword: string): string {
 competitorsRouter.get("/cards", async (req, res, next) => {
   try {
     const cards = await prisma.competitorCard.findMany({ where: { organizationId: orgOf(req) }, orderBy: { createdAt: "desc" } });
-    res.json({ cards });
+    const statsFor = await cardStatsLookup(orgOf(req), true);
+    res.json({ cards: cards.map((c) => ({ ...c, stats: statsFor(c.platform, c.keyword) })) });
   } catch (err) {
     next(err);
   }
@@ -378,6 +380,8 @@ competitorsRouter.get("/overview", async (req, res, next) => {
       positive: counts.POSITIVE,
       negative: counts.NEGATIVE,
       neutral: counts.NEUTRAL,
+      // One row per competitor, for the side-by-side comparison.
+      competitors: await competitorBreakdown(orgId),
     });
   } catch (err) {
     next(err);

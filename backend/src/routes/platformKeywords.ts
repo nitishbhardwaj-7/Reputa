@@ -6,6 +6,7 @@ import { getCronStatus, runOrganizationCycle } from "../services/cronScheduler";
 import { orgOf } from "../middleware/auth";
 import { SCRAPER_PLATFORMS } from "../services/queryService";
 import { assertCanAddKeywords, assertCanScan } from "../services/billingService";
+import { cardStatsLookup } from "../services/cardStats";
 
 export const platformKeywordsRouter = Router();
 
@@ -27,7 +28,8 @@ export function defaultSearchUrl(platform: string, keyword: string): string {
 platformKeywordsRouter.get("/", async (req, res, next) => {
   try {
     const cards = await prisma.platformKeyword.findMany({ where: { organizationId: orgOf(req) }, orderBy: { createdAt: "desc" } });
-    res.json({ cards });
+    const statsFor = await cardStatsLookup(orgOf(req), false);
+    res.json({ cards: cards.map((c) => ({ ...c, stats: statsFor(c.platform, c.keyword) })) });
   } catch (err) {
     next(err);
   }

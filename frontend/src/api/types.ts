@@ -259,6 +259,13 @@ export interface ManualScrapeResult {
   comments?: CommentItem[];
 }
 
+export interface CardStats {
+  mentions: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+}
+
 export interface PlatformKeywordCard {
   id: string;
   platform: string;
@@ -266,6 +273,7 @@ export interface PlatformKeywordCard {
   searchUrl?: string | null;
   enabled: boolean;
   lastRunAt?: string | null;
+  stats?: CardStats;
   createdAt: string;
   updatedAt: string;
 }
@@ -277,6 +285,7 @@ export interface CompetitorCard {
   searchUrl?: string | null;
   enabled: boolean;
   lastRunAt?: string | null;
+  stats?: CardStats;
   createdAt: string;
   updatedAt: string;
 }
@@ -290,6 +299,7 @@ export interface CompetitorOverview {
   positive?: number;
   negative?: number;
   neutral?: number;
+  competitors?: ({ keyword: string } & CardStats)[];
 }
 
 export interface CronLogItem {
